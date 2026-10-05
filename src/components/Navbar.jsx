@@ -4,7 +4,7 @@ import { PREFECTURES } from "../game/constants/prefectures";
 import { SoundManager } from "../game/services/SoundManager";
 
 export default function Navbar() {
-  const { player, currentView, setCurrentView, setIsPrefModalOpen } = useGame();
+  const { player, currentView, setCurrentView, setIsPrefModalOpen, returnToTitle } = useGame();
   const currentPref = PREFECTURES.find((p) => p.id === player.prefectureId) || PREFECTURES[13];
 
   const navItems = [
@@ -13,14 +13,24 @@ export default function Navbar() {
     { id: "arena", label: "闘技場", icon: "⚔️" },
     { id: "shop", label: "ショップ", icon: "🛒" },
     { id: "defense", label: "防衛準備", icon: "🛡️" },
-    { id: "encyclopedia", label: "台風図鑑", icon: "📖" }
+    { id: "encyclopedia", label: "台風図鑑", icon: "📖" },
+    { id: "save", label: "セーブ", icon: "💾" }
   ];
 
   return (
     <header className="navbar">
-      <div style={{ display: "flex", alignItems: "center", gap: "1.25rem" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+        {/* タイトルへ戻るボタン */}
+        <button
+          className="btn-ghost"
+          onClick={returnToTitle}
+          style={{ padding: "0.35rem 0.75rem", fontSize: "0.85rem", color: "var(--accent-cyan)", borderColor: "rgba(0, 242, 254, 0.4)" }}
+          title="タイトル画面へ戻る"
+        >
+          <span>タイトルへ</span>
+        </button>
+
         <div className="brand-title" onClick={() => setCurrentView("home")} style={{ cursor: "pointer" }}>
-          <span>🌀</span>
           <span>台風討伐記</span>
         </div>
 

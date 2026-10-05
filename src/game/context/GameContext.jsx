@@ -1,19 +1,45 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect } from "react";
 import { PREFECTURES } from "../constants/prefectures";
 import { WEAPONS, ARMORS } from "../constants/equipment";
-import { ITEMS } from "../constants/items";
 import { CROPS } from "../constants/crops";
 import { HISTORICAL_TYPHOONS } from "../constants/typhoonTypes";
 import { WeatherService } from "../services/WeatherService";
-import { TyphoonGenerator } from "../services/TyphoonGenerator";
 import { SoundManager } from "../services/SoundManager";
 
 const GameContext = createContext(null);
 
-const STORAGE_KEY = "TYPHOON_SUBJUGATION_SAVE_V1";
+const STORAGE_KEY = "TYPHOON_SUBJUGATION_MANUAL_SAVE_V1";
+
+// 初期プレイヤーデータ
+const DEFAULT_PLAYER = {
+  name: "気象守護士",
+  prefectureId: 14, // 神奈川県 (初期値)
+  level: 1,
+  exp: 0,
+  nextExp: 100,
+  money: 500,
+  maxHp: 500,
+  currentHp: 500,
+  maxSp: 100,
+  currentSp: 100,
+  baseAtk: 40,
+  baseDef: 20,
+  baseSpd: 30,
+  equippedWeapon: WEAPONS[0], // 銅剣
+  equippedArmor: ARMORS[0],  // 防風着
+  inventory: {
+    wind_net: 2,
+    sandbag: 2,
+    building_reinforce: 1,
+    potion_small: 3,
+    fertilizer: 2
+  },
+  ownedWeapons: [WEAPONS[0], WEAPONS[2], WEAPONS[4]], // 剣・弓・盾を初期所持
+  ownedArmors: [ARMORS[0]]
+};
 
 // 初期畑プロット (6面)
-const INITIAL_PLOTS = [
+const DEFAULT_PLOTS = [
   { id: 0, crop: "rice", plantedAt: Date.now() - 10000, growDuration: 25, stage: "growing" },
   { id: 1, crop: "vegetables", plantedAt: Date.now() - 5000, growDuration: 15, stage: "growing" },
   { id: 2, crop: null, plantedAt: null, growDuration: 0, stage: "empty" },
@@ -22,57 +48,59 @@ const INITIAL_PLOTS = [
   { id: 5, crop: null, plantedAt: null, growDuration: 0, stage: "empty" }
 ];
 
+const DEFAULT_ENCYCLOPEDIA = [
+  {
+    id: "archive-1",
+    name: "台風15号（2019年・令和元年房総半島台風）",
+    type: "gale",
+    maxWind: 57.5,
+    defenseScore: 82,
+    date: "2026/08/15",
+    status: "防衛成功"
+  }
+];
+
 export function GameProvider({ children }) {
-  // 1. プレイヤー基本情報
-  const [player, setPlayer] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return parsed.player;
-      } catch (e) {
-        console.error("Save load error", e);
-      }
-    }
-    return {
-      name: "気象守護士",
-      prefectureId: 14, // 神奈川県 (初期値)
-      level: 1,
-      exp: 0,
-      nextExp: 100,
-      money: 500,
-      maxHp: 500,
-      currentHp: 500,
-      maxSp: 100,
-      currentSp: 100,
-      baseAtk: 40,
-      baseDef: 20,
-      baseSpd: 30,
-      equippedWeapon: WEAPONS[0], // 銅剣
-      equippedArmor: ARMORS[0],  // 防風着
-      inventory: {
-        wind_net: 2,
-        sandbag: 2,
-        building_reinforce: 1,
-        potion_small: 3,
-        fertilizer: 2
-      },
-      ownedWeapons: [WEAPONS[0], WEAPONS[2], WEAPONS[4]], // 剣・弓・盾を初期所持
-      ownedArmors: [ARMORS[0]]
-    };
+  // 画面遷移モード
+  const [isInTitleScreen, setIsInTitleScreen] = useState(true);
+  const [isInIntroSequence, setIsInIntroSequence] = useState(false);
+  const [isQuitModalOpen, setIsQuitModalOpen] = useState(false);
+
+  // 手動セーブデータの存在確認
+  const [hasSaveData, setHasSaveData] = useState(() => {
+    return !!localStorage.getItem(STORAGE_KEY);
   });
 
-  // 2. 農地状態
-  const [farmPlots, setFarmPlots] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
+  // 最終手動セーブ日時
+  const [lastSavedTime, setLastSavedTime] = useState(() => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
       try {
-        const parsed = JSON.parse(saved);
-        if (parsed.farmPlots) return parsed.farmPlots;
+        const parsed = JSON.parse(raw);
+        return parsed.savedAtStr || null;
       } catch (e) {}
     }
-    return INITIAL_PLOTS;
+    return null;
   });
+
+  // セーブデータ概要
+  const [saveSummary, setSaveSummary] = useState(() => {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        const pref = PREFECTURES.find((p) => p.id === parsed.player?.prefectureId)?.name || "神奈川県";
+        return `Lv.${parsed.player?.level || 1} 守護士 / ${parsed.player?.money || 500}G / 拠点: ${pref}`;
+      } catch (e) {}
+    }
+    return null;
+  });
+
+  // 1. プレイヤー基本情報
+  const [player, setPlayer] = useState(DEFAULT_PLAYER);
+
+  // 2. 農地状態
+  const [farmPlots, setFarmPlots] = useState(DEFAULT_PLOTS);
 
   // 3. 防衛準備状態
   const [defenseActions, setDefenseActions] = useState({
@@ -84,7 +112,7 @@ export function GameProvider({ children }) {
 
   // 4. 気象・台風シミュレーション状態
   const [activeTyphoon, setActiveTyphoon] = useState(() => WeatherService.getActiveTyphoon("typhoon-201821"));
-  const [typhoonPos, setTyphoonPos] = useState({ x: 180, y: 560 }); // 南海上からスタート
+  const [typhoonPos, setTyphoonPos] = useState({ x: 180, y: 560 });
   const [isSimulatingMovement, setIsSimulatingMovement] = useState(true);
   const [proximityInfo, setProximityInfo] = useState({
     distanceKm: 800,
@@ -94,32 +122,13 @@ export function GameProvider({ children }) {
     badgeColor: "#10b981"
   });
 
-  // 5. 台風図鑑（過去の迎撃・防衛履歴）
-  const [encyclopedia, setEncyclopedia] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.encyclopedia) return parsed.encyclopedia;
-      } catch (e) {}
-    }
-    return [
-      {
-        id: "archive-1",
-        name: "台風15号（2019年・令和元年房総半島台風）",
-        type: "gale",
-        maxWind: 57.5,
-        defenseScore: 82,
-        date: "2026/08/15",
-        status: "防衛成功"
-      }
-    ];
-  });
+  // 5. 台風図鑑
+  const [encyclopedia, setEncyclopedia] = useState(DEFAULT_ENCYCLOPEDIA);
 
-  // 6. 直前の戦闘・被害集計結果（結果画面用）
+  // 6. 直前の戦闘・被害集計結果
   const [lastResult, setLastResult] = useState(null);
 
-  // 7. 現在のアクティブビュー ("home", "farm", "arena", "shop", "defense", "battle", "result", "encyclopedia")
+  // 7. 現在のアクティブビュー ("home", "farm", "arena", "shop", "defense", "battle", "result", "encyclopedia", "save")
   const [currentView, setCurrentView] = useState("home");
 
   // 8. 都道府県変更モーダル
@@ -133,19 +142,24 @@ export function GameProvider({ children }) {
     maxHp: player.maxHp + (player.equippedArmor?.hpBonus || 0)
   };
 
-  // セーブ保存
-  const saveGame = useCallback(() => {
+  // --- 手動セーブ実行関数（自動セーブは行わない） ---
+  const manualSave = () => {
+    const timeStr = new Date().toLocaleString("ja-JP");
     const saveData = {
       player,
       farmPlots,
-      encyclopedia
+      defenseActions,
+      encyclopedia,
+      savedAt: Date.now(),
+      savedAtStr: timeStr
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
-  }, [player, farmPlots, encyclopedia]);
-
-  useEffect(() => {
-    saveGame();
-  }, [saveGame]);
+    setHasSaveData(true);
+    setLastSavedTime(timeStr);
+    const pref = PREFECTURES.find((p) => p.id === player.prefectureId)?.name || "神奈川県";
+    setSaveSummary(`Lv.${player.level} 守護士 / ${player.money}G / 拠点: ${pref}`);
+    return true;
+  };
 
   // 台風接近判定の定期更新
   useEffect(() => {
@@ -153,25 +167,21 @@ export function GameProvider({ children }) {
     setProximityInfo(info);
   }, [typhoonPos, player.prefectureId]);
 
-  // 台風の自動移動（シミュレーション時）
+  // 台風の自動移動（本編プレイ時のみ）
   useEffect(() => {
-    if (!isSimulatingMovement) return;
+    if (!isSimulatingMovement || isInTitleScreen || isInIntroSequence) return;
     const interval = setInterval(() => {
       setTyphoonPos((prev) => {
-        // 目標都道府県の座標に向かって徐々に北東へ北上
         const targetPref = PREFECTURES.find((p) => p.id === player.prefectureId) || PREFECTURES[13];
         const dx = targetPref.x - prev.x;
         const dy = targetPref.y - prev.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
         if (dist < 15) {
-          // 直撃中。急激に東へ抜けていく
           return { x: prev.x + 3, y: prev.y - 1.5 };
         } else if (prev.y < 50 || prev.x > 550) {
-          // 通過完了。南西沖で再発生
           return { x: 140, y: 550 };
         } else {
-          // 北上
           const stepX = (dx / dist) * 1.5 + (Math.random() * 0.4 - 0.2);
           const stepY = (dy / dist) * 1.5 - 0.5;
           return { x: prev.x + stepX, y: prev.y + stepY };
@@ -180,10 +190,11 @@ export function GameProvider({ children }) {
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [isSimulatingMovement, player.prefectureId]);
+  }, [isSimulatingMovement, player.prefectureId, isInTitleScreen, isInIntroSequence]);
 
-  // 作物の成長タイマー
+  // 作物の成長タイマー（本編プレイ時のみ）
   useEffect(() => {
+    if (isInTitleScreen || isInIntroSequence) return;
     const interval = setInterval(() => {
       setFarmPlots((prevPlots) =>
         prevPlots.map((plot) => {
@@ -197,16 +208,77 @@ export function GameProvider({ children }) {
       );
     }, 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [isInTitleScreen, isInIntroSequence]);
+
+  // --- ゲーム起動・終了関連 ---
+
+  // New Game: データを完全初期化し、導入シーケンスを開始（効果音なしで静かに移行）
+  const startNewGame = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    setHasSaveData(false);
+    setLastSavedTime(null);
+    setSaveSummary(null);
+
+    setPlayer(DEFAULT_PLAYER);
+    setFarmPlots(DEFAULT_PLOTS);
+    setEncyclopedia(DEFAULT_ENCYCLOPEDIA);
+    setDefenseActions({
+      windNet: false,
+      sandbag: false,
+      buildingReinforce: false,
+      drainPump: false
+    });
+    setTyphoonPos({ x: 180, y: 560 });
+    
+    setIsInTitleScreen(false);
+    setIsInIntroSequence(true); // 導入シーケンス起動
+  };
+
+  // 導入シーケンス完了時（無音で本編へ）
+  const finishIntroSequence = () => {
+    setIsInIntroSequence(false);
+    setCurrentView("home");
+  };
+
+  // Continue: 手動セーブデータを復元して開始（無音で本編へ）
+  const continueGame = () => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.player) setPlayer(parsed.player);
+        if (parsed.farmPlots) setFarmPlots(parsed.farmPlots);
+        if (parsed.defenseActions) setDefenseActions(parsed.defenseActions);
+        if (parsed.encyclopedia) setEncyclopedia(parsed.encyclopedia);
+      } catch (e) {
+        console.error("Continue error", e);
+      }
+    }
+    setIsInTitleScreen(false);
+    setIsInIntroSequence(false);
+    setCurrentView("home");
+  };
+
+  // Quit Game: タブを閉じる
+  const quitGame = () => {
+    try {
+      window.close();
+    } catch (e) {}
+    setIsQuitModalOpen(true);
+  };
+
+  // タイトル画面へ戻る
+  const returnToTitle = () => {
+    setIsInTitleScreen(true);
+    setIsInIntroSequence(false);
+  };
 
   // --- アクション関数群 ---
 
-  // 都道府県変更
   const setPrefecture = (prefId) => {
     setPlayer((prev) => ({ ...prev, prefectureId: prefId }));
   };
 
-  // 経験値獲得とレベルアップ判定
   const gainExp = (amount) => {
     setPlayer((prev) => {
       let exp = prev.exp + amount;
@@ -241,12 +313,10 @@ export function GameProvider({ children }) {
     });
   };
 
-  // 所持金の変動
   const addMoney = (amount) => {
     setPlayer((prev) => ({ ...prev, money: Math.max(0, prev.money + amount) }));
   };
 
-  // アイテム消費/追加
   const modifyItemCount = (itemId, delta) => {
     setPlayer((prev) => {
       const current = prev.inventory[itemId] || 0;
@@ -261,7 +331,6 @@ export function GameProvider({ children }) {
     });
   };
 
-  // 作物植え付け
   const plantCrop = (plotId, cropId) => {
     const cropConfig = CROPS[cropId];
     if (!cropConfig || player.money < cropConfig.seedCost) return false;
@@ -284,14 +353,12 @@ export function GameProvider({ children }) {
     return true;
   };
 
-  // 作物収穫
   const harvestCrop = (plotId) => {
     const plot = farmPlots.find((p) => p.id === plotId);
     if (!plot || !plot.crop) return 0;
 
     const cropConfig = CROPS[plot.crop];
     const isReady = plot.stage === "ready";
-    // 早期緊急収穫なら70%の売却価格、完熟なら100%
     const yieldMoney = Math.round(cropConfig.baseYield * (isReady ? 1.0 : 0.7));
 
     addMoney(yieldMoney);
@@ -304,7 +371,6 @@ export function GameProvider({ children }) {
     return yieldMoney;
   };
 
-  // 肥料使用
   const applyFertilizer = (plotId) => {
     if ((player.inventory.fertilizer || 0) <= 0) return false;
     modifyItemCount("fertilizer", -1);
@@ -313,7 +379,7 @@ export function GameProvider({ children }) {
         if (p.id === plotId && p.crop && p.stage !== "ready") {
           return {
             ...p,
-            plantedAt: p.plantedAt - p.growDuration * 500 // 半分進める
+            plantedAt: p.plantedAt - p.growDuration * 500
           };
         }
         return p;
@@ -323,7 +389,6 @@ export function GameProvider({ children }) {
     return true;
   };
 
-  // 装備切り替え
   const equipWeapon = (weapon) => {
     setPlayer((prev) => ({ ...prev, equippedWeapon: weapon }));
     SoundManager.playClick();
@@ -334,7 +399,6 @@ export function GameProvider({ children }) {
     SoundManager.playClick();
   };
 
-  // 防衛アイテム設置
   const toggleDefenseAction = (actionKey, requiredItemId) => {
     const isCurrentlyActive = defenseActions[actionKey];
     if (isCurrentlyActive) {
@@ -351,16 +415,13 @@ export function GameProvider({ children }) {
     return true;
   };
 
-  // 台風プリセットのロード
   const loadTyphoonPreset = (presetId) => {
     const newBoss = WeatherService.getActiveTyphoon(presetId);
     setActiveTyphoon(newBoss);
-    // 距離を適切な位置にリセット
     setTyphoonPos({ x: 200, y: 520 });
     SoundManager.playAlert();
   };
 
-  // ランダム台風生成
   const spawnRandomTyphoon = () => {
     const newBoss = WeatherService.generateRandomTyphoon();
     setActiveTyphoon(newBoss);
@@ -368,7 +429,6 @@ export function GameProvider({ children }) {
     SoundManager.playAlert();
   };
 
-  // 台風図鑑への追加
   const addToEncyclopedia = (record) => {
     setEncyclopedia((prev) => [record, ...prev]);
   };
@@ -376,6 +436,20 @@ export function GameProvider({ children }) {
   return (
     <GameContext.Provider
       value={{
+        isInTitleScreen,
+        setIsInTitleScreen,
+        isInIntroSequence,
+        finishIntroSequence,
+        hasSaveData,
+        lastSavedTime,
+        saveSummary,
+        manualSave,
+        startNewGame,
+        continueGame,
+        quitGame,
+        returnToTitle,
+        isQuitModalOpen,
+        setIsQuitModalOpen,
         player,
         setPlayer,
         computedStats,

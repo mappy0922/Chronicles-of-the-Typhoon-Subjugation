@@ -1,0 +1,196 @@
+/* キャラクタークリエイト画面専用スタイル */
+
+.char-create-container {
+  min-height: 100vh;
+  width: 100vw;
+  background: radial-gradient(circle at 50% 30%, #0d192d 0%, #060b14 70%, #020408 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  user-select: none;
+}
+
+.char-create-wrapper {
+  max-width: 960px;
+  width: 100%;
+  background: rgba(15, 23, 42, 0.88);
+  border: 1.5px solid var(--border-glow);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(16px);
+  padding: 2rem;
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6), var(--glow-cyan);
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* ウィザード進捗インジケーター */
+.wizard-steps {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 1.25rem;
+}
+
+.wizard-step-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.wizard-step-item.active {
+  color: var(--accent-cyan);
+}
+
+.wizard-step-num {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+}
+
+.wizard-step-item.active .wizard-step-num {
+  background: linear-gradient(135deg, #00f2fe, #3b82f6);
+  color: #030816;
+  border: none;
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.5);
+}
+
+/* 2カラムレイアウト（プレビュー ＆ パレット） */
+.char-custom-grid {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .char-custom-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* アバタープレビュー台座 */
+.avatar-preview-stage {
+  background: radial-gradient(circle at 50% 50%, rgba(0, 242, 254, 0.1) 0%, rgba(15, 23, 42, 0.6) 70%);
+  border: 1px solid rgba(0, 242, 254, 0.3);
+  border-radius: 20px;
+  padding: 2rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.avatar-pedestal-ring {
+  position: absolute;
+  bottom: 30px;
+  width: 140px;
+  height: 35px;
+  border-radius: 50%;
+  border: 1.5px dashed rgba(0, 242, 254, 0.4);
+  box-shadow: 0 0 20px rgba(0, 242, 254, 0.25);
+  pointer-events: none;
+}
+
+/* カテゴリタブ */
+.custom-category-tabs {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 1rem;
+}
+
+.custom-tab-btn {
+  background: var(--bg-glass);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-md);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.custom-tab-btn.active {
+  background: rgba(0, 242, 254, 0.15);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+}
+
+/* 選択肢グリッド */
+.options-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(105px, 1fr));
+  gap: 0.6rem;
+  max-height: 280px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.option-btn {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 0.75rem 0.5rem;
+  color: var(--text-primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.option-btn.selected {
+  border-color: var(--accent-cyan);
+  background: linear-gradient(135deg, rgba(0, 242, 254, 0.18), rgba(59, 130, 246, 0.2));
+  color: var(--accent-cyan);
+  box-shadow: 0 0 15px rgba(0, 242, 254, 0.25);
+}
+
+.option-btn:hover:not(.selected) {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* カラーパレット円ボタン */
+.color-picker-row {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.color-dot-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.color-dot-btn.selected {
+  border-color: #ffffff;
+  transform: scale(1.2);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.6);
+}
