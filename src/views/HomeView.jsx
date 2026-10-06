@@ -3,6 +3,7 @@ import { useGame } from "../game/context/GameContext";
 import WeatherRadar from "../components/WeatherRadar";
 import { HISTORICAL_TYPHOONS } from "../game/constants/typhoonTypes";
 import { PREFECTURES } from "../game/constants/prefectures";
+import PlayerAvatar from "../components/PlayerAvatar";
 
 export default function HomeView() {
   const {
@@ -33,6 +34,7 @@ export default function HomeView() {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+            <div className="home-player-identity"><PlayerAvatar appearance={player.appearance} size={84} /><div><strong>{player.name}</strong><span>{currentPref.name} 出身</span></div></div>
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
                 <span style={{ color: "var(--text-secondary)" }}>HP (体力)</span>

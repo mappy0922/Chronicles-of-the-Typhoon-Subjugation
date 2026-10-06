@@ -3,6 +3,7 @@ import { useGame } from "../game/context/GameContext";
 import StormCanvas from "../components/StormCanvas";
 import { SoundManager } from "../game/services/SoundManager";
 import { DamageCalculator } from "../game/services/DamageCalculator";
+import PlayerAvatar from "../components/PlayerAvatar";
 
 export default function BattleView() {
   const {
@@ -262,7 +263,7 @@ export default function BattleView() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginBottom: "0.75rem" }}>
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
-              <span style={{ fontWeight: 700, color: "var(--accent-cyan)" }}>👤 {player.name} (HP)</span>
+              <span style={{ display: "flex", alignItems: "center", gap: "0.5rem", fontWeight: 700, color: "var(--accent-cyan)" }}><PlayerAvatar appearance={player.appearance} size={42} /> {player.name} (HP)</span>
               <span className="stat-val">{playerHp} / {computedStats.maxHp}</span>
             </div>
             <div className="progress-bar-container">

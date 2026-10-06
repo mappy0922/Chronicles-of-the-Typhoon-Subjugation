@@ -2,6 +2,7 @@ import React from "react";
 
 // デフォルトのアバター外見データ
 export const DEFAULT_APPEARANCE = {
+  gender: "masculine",
   skinTone: "#fbd38d", // 肌色
   faceShape: "sharp",  // sharp, round, square
   hairStyle: "short",  // short, wolf, long, ponytail, twintail, samurai

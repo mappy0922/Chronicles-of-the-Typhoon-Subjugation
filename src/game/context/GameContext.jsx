@@ -5,6 +5,7 @@ import { CROPS } from "../constants/crops";
 import { HISTORICAL_TYPHOONS } from "../constants/typhoonTypes";
 import { WeatherService } from "../services/WeatherService";
 import { SoundManager } from "../services/SoundManager";
+import { DEFAULT_APPEARANCE } from "../../components/PlayerAvatar";
 
 const GameContext = createContext(null);
 
@@ -12,6 +13,7 @@ const STORAGE_KEY = "TYPHOON_SUBJUGATION_MANUAL_SAVE_V1";
 
 // 初期プレイヤーデータ
 const DEFAULT_PLAYER = {
+  appearance: { ...DEFAULT_APPEARANCE },
   name: "気象守護士",
   prefectureId: 14, // 神奈川県 (初期値)
   level: 1,
@@ -64,6 +66,7 @@ export function GameProvider({ children }) {
   // 画面遷移モード
   const [isInTitleScreen, setIsInTitleScreen] = useState(true);
   const [isInIntroSequence, setIsInIntroSequence] = useState(false);
+  const [isInCharacterCreation, setIsInCharacterCreation] = useState(false);
   const [isQuitModalOpen, setIsQuitModalOpen] = useState(false);
 
   // 手動セーブデータの存在確認
@@ -237,6 +240,11 @@ export function GameProvider({ children }) {
   // 導入シーケンス完了時（無音で本編へ）
   const finishIntroSequence = () => {
     setIsInIntroSequence(false);
+    setIsInCharacterCreation(true);
+  };
+
+  const completeCharacterCreation = () => {
+    setIsInCharacterCreation(false);
     setCurrentView("home");
   };
 
@@ -246,7 +254,7 @@ export function GameProvider({ children }) {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (parsed.player) setPlayer(parsed.player);
+        if (parsed.player) setPlayer({ ...DEFAULT_PLAYER, ...parsed.player, appearance: { ...DEFAULT_APPEARANCE, ...parsed.player.appearance } });
         if (parsed.farmPlots) setFarmPlots(parsed.farmPlots);
         if (parsed.defenseActions) setDefenseActions(parsed.defenseActions);
         if (parsed.encyclopedia) setEncyclopedia(parsed.encyclopedia);
@@ -439,7 +447,9 @@ export function GameProvider({ children }) {
         isInTitleScreen,
         setIsInTitleScreen,
         isInIntroSequence,
+        isInCharacterCreation,
         finishIntroSequence,
+        completeCharacterCreation,
         hasSaveData,
         lastSavedTime,
         saveSummary,

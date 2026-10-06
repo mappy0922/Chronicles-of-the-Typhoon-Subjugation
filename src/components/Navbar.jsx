@@ -2,6 +2,7 @@ import React from "react";
 import { useGame } from "../game/context/GameContext";
 import { PREFECTURES } from "../game/constants/prefectures";
 import { SoundManager } from "../game/services/SoundManager";
+import PlayerAvatar from "./PlayerAvatar";
 
 export default function Navbar() {
   const { player, currentView, setCurrentView, setIsPrefModalOpen, returnToTitle } = useGame();
@@ -65,6 +66,10 @@ export default function Navbar() {
 
       {/* プレイヤーステータス要約 & 音声切替 */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <div className="navbar-player-identity" title={player.name}>
+          <PlayerAvatar appearance={player.appearance} size={38} />
+          <span>{player.name}</span>
+        </div>
         <div className="badge badge-amber" style={{ padding: "0.35rem 0.75rem" }}>
           <span>💰</span>
           <span className="stat-val">{player.money.toLocaleString()} G</span>

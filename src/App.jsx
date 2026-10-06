@@ -16,12 +16,13 @@ import BattleView from "./views/BattleView";
 import ResultView from "./views/ResultView";
 import EncyclopediaView from "./views/EncyclopediaView";
 import SaveView from "./views/SaveView";
+import CharacterCreationView from "./views/CharacterCreationView";
 
 import "./styles/index.css";
 import "./styles/title-screen.css";
 
 function GameApp() {
-  const { currentView, isInTitleScreen, isInIntroSequence, finishIntroSequence } = useGame();
+  const { currentView, isInTitleScreen, isInIntroSequence, isInCharacterCreation, finishIntroSequence } = useGame();
 
   // 1. タイトル画面表示中
   if (isInTitleScreen) {
@@ -31,6 +32,10 @@ function GameApp() {
   // 2. New Game 選択時の導入メッセージシーケンス中
   if (isInIntroSequence) {
     return <IntroSequenceView onComplete={finishIntroSequence} />;
+  }
+
+  if (isInCharacterCreation) {
+    return <CharacterCreationView />;
   }
 
   // 3. ゲーム本編画面
