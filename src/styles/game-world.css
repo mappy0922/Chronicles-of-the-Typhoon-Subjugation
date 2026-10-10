@@ -15,11 +15,10 @@
 .world-cloud::before,.world-cloud::after { content:""; position:absolute; bottom:10px; border-radius:50%; background:inherit; }
 .world-cloud::before { left:24px; width:50px; height:50px; }.world-cloud::after { left:64px; width:68px; height:64px; }
 .world-cloud-one { left:17%; }.world-cloud-two { top:29%; left:59%; transform:scale(.72); }
-.world-houses-back { position:absolute; z-index:3; inset:0; pointer-events:none; }
-.world-house-back { position:absolute; bottom:35%; width:24%; max-height:28vh; object-fit:contain; object-position:center bottom; filter:brightness(calc(1 - var(--storm-darkness) * .36)); transition:filter 2s ease; }
-.house-far-left { left:-7%; }.house-back-one { left:20%; }.house-back-two { left:56%; }.house-far-right { right:-7%; }
 .world-houses { position:absolute; z-index:5; left:0; right:0; bottom:31.5%; display:flex; align-items:flex-end; justify-content:space-between; padding-inline:clamp(1rem,4vw,4rem); pointer-events:none; }
-.world-house { display:block; flex:0 1 30%; width:30%; max-height:43vh; object-fit:contain; object-position:center bottom; filter:brightness(calc(1 - var(--storm-darkness) * .36)); transition:filter 2s ease; }
+.world-house { position:relative; z-index:1; display:block; flex:0 1 30%; width:30%; max-height:43vh; object-fit:contain; object-position:center bottom; filter:brightness(calc(1 - var(--storm-darkness) * .36)); transition:filter 2s ease; }
+.world-house-back { position:absolute; z-index:0; bottom:0; width:30%; max-height:43vh; transform:scale(.85); transform-origin:center bottom; }
+.house-far-left { left:-9%; }.house-back-one { left:22%; }.house-back-two { left:47%; }.house-far-right { right:-9%; }
 .world-ground { position:absolute; z-index:4; inset:auto 0 0; height:35%; overflow:hidden; background:linear-gradient(#65bd50,#378b3e); border-top:5px solid rgba(144,218,104,.75); filter:brightness(calc(1 - var(--storm-darkness) * .68)); }
 .world-grass-blade { position:absolute; bottom:0; width:clamp(2px,.28vw,4px); min-height:18px; border-radius:100% 0 0 0; background:linear-gradient(90deg,#2e8038,#9ad85b); transform:rotate(var(--lean)); transform-origin:bottom center; animation:grass-sway 1.7s ease-in-out var(--sway-delay) infinite alternate; }
 .world-player { position:absolute; z-index:6; bottom:20%; display:flex; flex-direction:column; align-items:center; transform:translateX(-50%) scaleX(var(--facing)); transition:left .16s linear; }
@@ -28,4 +27,4 @@
 .is-strike .world-ground { filter:brightness(.35) saturate(.7); }
 @keyframes player-walk { from { transform:translateY(0) rotate(-3deg); } to { transform:translateY(-5px) rotate(3deg); } }
 @keyframes grass-sway { from { rotate:-3deg; } to { rotate:4deg; } }
-@media(max-width:650px) { .world-player img { height:120px!important; } .world-houses { padding-inline:8px; } .world-house { flex-basis:31%; width:31%; max-height:24vh; } .world-house-back { width:31%; max-height:18vh; } .house-far-left { left:-15%; } .house-back-one { left:14%; } .house-back-two { left:56%; } .house-far-right { right:-15%; } }
+@media(max-width:650px) { .world-player img { height:120px!important; } .world-houses { padding-inline:8px; } .world-house { flex-basis:31%; width:31%; max-height:24vh; } .world-house-back { width:31%; max-height:24vh; } .house-far-left { left:-15%; } .house-back-one { left:16%; } .house-back-two { left:54%; } .house-far-right { right:-15%; } }

@@ -55,7 +55,7 @@ class SoundManagerClass {
       }, 50);
     }
     this.ambientAudio.muted = this.isMuted;
-    if (targetVolume > 0 && this.ambientAudio.paused) {
+    if (!this.isMuted && this.rainIntensity > 0 && this.ambientAudio.paused) {
       this.ambientAudio.play().catch(() => {});
     }
   }

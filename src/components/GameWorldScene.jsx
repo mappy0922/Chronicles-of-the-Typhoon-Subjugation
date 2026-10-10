@@ -46,13 +46,11 @@ export default function GameWorldScene() {
       <div className="world-sun" />
       <div className="world-cloud world-cloud-one" />
       <div className="world-cloud world-cloud-two" />
-      <div className="world-houses world-houses-back" aria-hidden="true">
-        <img className="world-house-back house-far-left" src="/natural_house-cutout.png" alt="" />
-        <img className="world-house-back house-back-one" src="/romantic_house-cutout.png" alt="" />
-        <img className="world-house-back house-back-two" src="/modan_house-cutout.png" alt="" />
-        <img className="world-house-back house-far-right" src="/natural_house-cutout.png" alt="" />
-      </div>
       <div className="world-houses" aria-hidden="true">
+        <img className="world-house world-house-back house-far-left" src="/natural_house-cutout.png" alt="" />
+        <img className="world-house world-house-back house-back-one" src="/romantic_house-cutout.png" alt="" />
+        <img className="world-house world-house-back house-back-two" src="/modan_house-cutout.png" alt="" />
+        <img className="world-house world-house-back house-far-right" src="/natural_house-cutout.png" alt="" />
         <img className="world-house world-house-natural" src="/natural_house-cutout.png" alt="" />
         <img className="world-house world-house-modern" src="/modan_house-cutout.png" alt="" />
         <img className="world-house world-house-romantic" src="/romantic_house-cutout.png" alt="" />
