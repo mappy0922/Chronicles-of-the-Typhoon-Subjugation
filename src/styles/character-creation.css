@@ -230,6 +230,8 @@
 .gender-options { display: grid; grid-template-columns: 1fr 1fr; width: 100%; max-width: 440px; gap: 1rem; margin-inline: auto; }
 .gender-option { min-height: 58px; font-size: 1.05rem; }
 .character-setup-content .btn-primary:disabled { opacity: .45; cursor: not-allowed; filter: grayscale(.35); }
+.creation-actions.setup-actions .btn-primary { background: var(--bg-glass); border: 1px solid var(--border-subtle); color: var(--text-primary); box-shadow: none; }
+.creation-actions.setup-actions .btn-primary:hover:not(:disabled) { background: rgba(255,255,255,.1); border-color: rgba(255,255,255,.2); box-shadow: none; }
 .setup-actions { width: 100%; margin-top: 1.25rem; }
 .creation-actions.setup-actions { display: flex; flex-wrap: nowrap; align-self: stretch; justify-content: center; align-items: center; gap: clamp(3rem, 9vw, 7rem); }
 .creation-actions.setup-actions button { flex: 0 0 8rem; width: 8rem; min-width: 0; max-width: 8rem; justify-content: center; padding-inline: .8rem; text-align: center; }

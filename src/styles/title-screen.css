@@ -294,6 +294,14 @@
   font-family: var(--font-mono);
 }
 
+.intro-source-credit {
+  display: block;
+  margin-top: 0.45rem;
+  font: inherit;
+  color: inherit;
+  opacity: inherit;
+}
+
 /* 終了スクリーン */
 .quit-screen-modal {
   position: fixed;

@@ -68,6 +68,7 @@ export default function IntroSequenceView({ onComplete }) {
 
       <div className="intro-skip-hint">
         CLICK OR PRESS ANY KEY TO ADVANCE
+        <span className="intro-source-credit">出典：気象庁ホームページ</span>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { useGame } from "../game/context/GameContext";
 
 export default function AudioControls() {
   const [isMuted, setIsMuted] = useState(SoundManager.isMuted);
-  const { isInTitleScreen, isInIntroSequence, isInCharacterCreation, proximityInfo, activeTyphoon } = useGame();
+  const { isInTitleScreen, isInIntroSequence, isInCharacterCreation, weatherInfo } = useGame();
 
   useEffect(() => {
     const startAmbient = () => SoundManager.startRain();
@@ -17,16 +17,14 @@ export default function AudioControls() {
   }, []);
 
   useEffect(() => {
-    const phaseIntensity = { calm: 0, alert: 0.18, prep: 0.42, strike: 1 }[proximityInfo.alertPhase] || 0;
-    const windStrength = Math.max(0, Math.min(1, ((activeTyphoon.maxWind || 20) - 15) / 45));
     const isSilentSequence = isInIntroSequence || isInCharacterCreation;
     const rainIntensity = isSilentSequence
       ? 0
       : isInTitleScreen
         ? 0.32
-        : phaseIntensity * (0.25 + windStrength * 0.75);
+        : weatherInfo.rainIntensity || 0;
     SoundManager.setRainIntensity(rainIntensity);
-  }, [isInTitleScreen, isInIntroSequence, isInCharacterCreation, proximityInfo.alertPhase, activeTyphoon]);
+  }, [isInTitleScreen, isInIntroSequence, isInCharacterCreation, weatherInfo.rainIntensity]);
 
   const toggleAudio = () => setIsMuted(SoundManager.toggleMute());
 

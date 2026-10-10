@@ -3,7 +3,7 @@ import { useGame } from "../game/context/GameContext";
 
 export default function StormCanvas({ isBattle = false, strengthBased = false, flashAboveGround = false }) {
   const canvasRef = useRef(null);
-  const { proximityInfo, activeTyphoon } = useGame();
+  const { proximityInfo, weatherInfo } = useGame();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -19,27 +19,26 @@ export default function StormCanvas({ isBattle = false, strengthBased = false, f
     window.addEventListener("resize", resize);
 
     // 警戒度に応じた雨量・風速パーティクル設定
-    const typhoonStrength = Math.max(0, Math.min(1, ((activeTyphoon.maxWind || 20) - 20) / 45));
     let rainCount = 20;
     let windSpeed = 3;
     let thunderChance = 0;
 
     if (strengthBased) {
-      const phaseRain = { calm: 0, alert: 0.18, prep: 0.42, strike: 1 }[proximityInfo.alertPhase] ?? 0;
-      rainCount = Math.round((10 + typhoonStrength * 170) * phaseRain);
-      windSpeed = 3 + typhoonStrength * 19;
-      thunderChance = proximityInfo.alertPhase === "strike" ? 0.003 + typhoonStrength * 0.012 : 0;
+      const localRain = weatherInfo.rainIntensity || 0;
+      const localStorm = weatherInfo.stormIntensity || 0;
+      rainCount = Math.round(180 * localRain);
+      windSpeed = 3 + localStorm * 19;
+      thunderChance = localStorm >= 0.8 ? 0.003 + localStorm * 0.012 : 0;
     } else if (isBattle || proximityInfo.alertPhase === "strike") {
       rainCount = 180;
       windSpeed = 22;
       thunderChance = 0.015;
-    } else if (proximityInfo.alertPhase === "prep") {
-      rainCount = 100;
-      windSpeed = 12;
-      thunderChance = 0.005;
-    } else if (proximityInfo.alertPhase === "alert") {
-      rainCount = 45;
-      windSpeed = 6;
+    } else {
+      const localRain = weatherInfo.rainIntensity || 0;
+      const localStorm = weatherInfo.stormIntensity || 0;
+      rainCount = Math.round(180 * localRain);
+      windSpeed = 3 + localStorm * 19;
+      thunderChance = localStorm >= 0.8 ? 0.003 + localStorm * 0.012 : 0;
     }
 
     const raindrops = Array.from({ length: rainCount }, () => ({
@@ -93,7 +92,7 @@ export default function StormCanvas({ isBattle = false, strengthBased = false, f
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animationId);
     };
-  }, [proximityInfo.alertPhase, isBattle, activeTyphoon, strengthBased, flashAboveGround]);
+  }, [proximityInfo.alertPhase, weatherInfo.rainIntensity, weatherInfo.stormIntensity, isBattle, strengthBased, flashAboveGround]);
 
   return (
     <canvas

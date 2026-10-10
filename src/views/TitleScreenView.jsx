@@ -89,7 +89,7 @@ export default function TitleScreenView() {
           </div>
 
           {/* タイトルロゴ（最前面） */}
-          <h1 className="title-main-heading">イラつく台風ぶっ飛ばしゲーム</h1>
+          <h1 className="title-main-heading">台風ぶっ飛ばしゲーム</h1>
 
           {/* 点滅テキスト */}
           <div className="press-any-key-box">

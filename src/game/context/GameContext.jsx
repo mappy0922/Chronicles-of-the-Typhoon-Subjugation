@@ -4,6 +4,7 @@ import { WEAPONS, ARMORS } from "../constants/equipment";
 import { CROPS } from "../constants/crops";
 import { HISTORICAL_TYPHOONS } from "../constants/typhoonTypes";
 import { WeatherService } from "../services/WeatherService";
+import { JmaWeatherService } from "../services/JmaWeatherService";
 import { SoundManager } from "../services/SoundManager";
 import { DEFAULT_APPEARANCE } from "../../components/PlayerAvatar";
 
@@ -116,7 +117,7 @@ export function GameProvider({ children }) {
   // 4. 気象・台風シミュレーション状態
   const [activeTyphoon, setActiveTyphoon] = useState(() => WeatherService.getActiveTyphoon("typhoon-201821"));
   const [typhoonPos, setTyphoonPos] = useState({ x: 180, y: 560 });
-  const [isSimulatingMovement, setIsSimulatingMovement] = useState(true);
+  const [weatherInfo, setWeatherInfo] = useState({ status: "loading", rainIntensity: 0, cloudiness: 0.04, stormIntensity: 0 });
   const [proximityInfo, setProximityInfo] = useState({
     distanceKm: 800,
     alertPhase: "calm",
@@ -166,35 +167,22 @@ export function GameProvider({ children }) {
 
   // 台風接近判定の定期更新
   useEffect(() => {
-    const info = WeatherService.calculateProximity(typhoonPos, player.prefectureId);
-    setProximityInfo(info);
-  }, [typhoonPos, player.prefectureId]);
+    let isActive = true;
+    const refreshWeather = async () => {
+      const result = await JmaWeatherService.getLocalConditions(player.prefectureId);
+      if (!isActive) return;
+      setWeatherInfo(result.weatherInfo);
+      setProximityInfo(result.proximityInfo);
+    };
+    refreshWeather();
+    const interval = window.setInterval(refreshWeather, 30 * 60 * 1000);
+    return () => {
+      isActive = false;
+      window.clearInterval(interval);
+    };
+  }, [player.prefectureId]);
 
   // 台風の自動移動（本編プレイ時のみ）
-  useEffect(() => {
-    if (!isSimulatingMovement || isInTitleScreen || isInIntroSequence) return;
-    const interval = setInterval(() => {
-      setTyphoonPos((prev) => {
-        const targetPref = PREFECTURES.find((p) => p.id === player.prefectureId) || PREFECTURES[13];
-        const dx = targetPref.x - prev.x;
-        const dy = targetPref.y - prev.y;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-
-        if (dist < 15) {
-          return { x: prev.x + 3, y: prev.y - 1.5 };
-        } else if (prev.y < 50 || prev.x > 550) {
-          return { x: 140, y: 550 };
-        } else {
-          const stepX = (dx / dist) * 1.5 + (Math.random() * 0.4 - 0.2);
-          const stepY = (dy / dist) * 1.5 - 0.5;
-          return { x: prev.x + stepX, y: prev.y + stepY };
-        }
-      });
-    }, 1500);
-
-    return () => clearInterval(interval);
-  }, [isSimulatingMovement, player.prefectureId, isInTitleScreen, isInIntroSequence]);
-
   // 作物の成長タイマー（本編プレイ時のみ）
   useEffect(() => {
     if (isInTitleScreen || isInIntroSequence) return;
@@ -480,6 +468,7 @@ export function GameProvider({ children }) {
         typhoonPos,
         setTyphoonPos,
         proximityInfo,
+        weatherInfo,
         loadTyphoonPreset,
         spawnRandomTyphoon,
         encyclopedia,
