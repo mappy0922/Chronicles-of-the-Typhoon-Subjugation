@@ -17,6 +17,7 @@ import ResultView from "./views/ResultView";
 import EncyclopediaView from "./views/EncyclopediaView";
 import SaveView from "./views/SaveView";
 import CharacterCreationView from "./views/CharacterCreationView";
+import AudioControls from "./components/AudioControls";
 
 import "./styles/index.css";
 import "./styles/title-screen.css";
@@ -72,6 +73,7 @@ function GameApp() {
 export default function App() {
   return (
     <GameProvider>
+      <AudioControls />
       <GameApp />
     </GameProvider>
   );

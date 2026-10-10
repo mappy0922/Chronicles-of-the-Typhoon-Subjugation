@@ -75,6 +75,35 @@ body {
   padding: 1.5rem 1rem 4rem 1rem;
 }
 
+.global-audio-toggle {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: .45rem;
+  border: 1px solid rgba(0, 242, 254, .55);
+  border-radius: 999px;
+  color: var(--text-primary);
+  background: rgba(8, 12, 20, .9);
+  box-shadow: 0 0 18px rgba(0, 242, 254, .18);
+  backdrop-filter: blur(12px);
+  font: 700 .85rem var(--font-main);
+  cursor: pointer;
+}
+
+.global-audio-toggle[aria-pressed="false"] {
+  border-color: var(--border-subtle);
+  color: var(--text-secondary);
+  box-shadow: none;
+}
+
+.global-audio-toggle:focus-visible { outline: 2px solid var(--accent-cyan); outline-offset: 3px; }
+
 /* ナビゲーションバー */
 .navbar {
   position: sticky;
@@ -138,6 +167,21 @@ body {
   border-color: var(--accent-cyan);
   box-shadow: var(--glow-cyan);
 }
+
+.quick-save-btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+  border: 1px solid rgba(0, 242, 254, .5);
+  border-radius: var(--radius-md);
+  padding: .55rem .75rem;
+  color: var(--accent-cyan);
+  background: rgba(0, 242, 254, .1);
+  font: 700 .85rem var(--font-main);
+  cursor: pointer;
+  transition: background .2s ease, box-shadow .2s ease;
+}
+
+.quick-save-btn:hover { background: rgba(0, 242, 254, .2); box-shadow: var(--glow-cyan); }
 
 /* 警報ヘッダーバー */
 .alert-banner {

@@ -5,9 +5,7 @@ class SoundManagerClass {
   constructor() {
     this.ctx = null;
     this.isMuted = false;
-    this.ambientRainNode = null;
-    this.ambientWindNode = null;
-    this.ambientGain = null;
+    this.ambientAudio = null;
   }
 
   init() {
@@ -18,15 +16,26 @@ class SoundManagerClass {
       }
     }
     if (this.ctx && this.ctx.state === "suspended") {
-      this.ctx.resume();
+      this.ctx.resume().catch(() => {});
     }
   }
 
-  toggleMute() {
-    this.isMuted = !this.isMuted;
-    if (this.ambientGain) {
-      this.ambientGain.gain.setValueAtTime(this.isMuted ? 0 : 0.15, this.ctx ? this.ctx.currentTime : 0);
+  startRain() {
+    if (typeof Audio === "undefined") return;
+    if (!this.ambientAudio) {
+      this.ambientAudio = new Audio("/soft_natural_rain.wav");
+      this.ambientAudio.loop = true;
+      this.ambientAudio.preload = "auto";
+      this.ambientAudio.volume = 0.18;
     }
+    this.ambientAudio.muted = this.isMuted;
+    this.ambientAudio.play().catch(() => {});
+  }
+
+  toggleMute() {
+    this.startRain();
+    this.isMuted = !this.isMuted;
+    if (this.ambientAudio) this.ambientAudio.muted = this.isMuted;
     return this.isMuted;
   }
 

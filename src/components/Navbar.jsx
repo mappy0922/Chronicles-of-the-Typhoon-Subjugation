@@ -1,11 +1,12 @@
-import React from "react";
+import React, { useState } from "react";
 import { useGame } from "../game/context/GameContext";
 import { PREFECTURES } from "../game/constants/prefectures";
 import { SoundManager } from "../game/services/SoundManager";
-import PlayerAvatar from "./PlayerAvatar";
+import CharacterPortrait from "./CharacterPortrait";
 
 export default function Navbar() {
-  const { player, currentView, setCurrentView, setIsPrefModalOpen, returnToTitle } = useGame();
+  const { player, currentView, setCurrentView, returnToTitle, manualSave } = useGame();
+  const [saveNotice, setSaveNotice] = useState(false);
   const currentPref = PREFECTURES.find((p) => p.id === player.prefectureId) || PREFECTURES[13];
 
   const navItems = [
@@ -32,19 +33,17 @@ export default function Navbar() {
         </button>
 
         <div className="brand-title" onClick={() => setCurrentView("home")} style={{ cursor: "pointer" }}>
-          <span>台風討伐記</span>
+          <span>イラつく台風ぶっ飛ばしゲーム</span>
         </div>
 
         {/* 登録都道府県バッジ */}
-        <button
+        <div
           className="badge badge-cyan"
-          onClick={() => setIsPrefModalOpen(true)}
-          style={{ cursor: "pointer", background: "rgba(0,242,254,0.12)", border: "1px solid var(--accent-cyan)", padding: "0.35rem 0.75rem" }}
-          title="クリックして拠点を変更"
+          style={{ background: "rgba(0,242,254,0.12)", border: "1px solid var(--accent-cyan)", padding: "0.35rem 0.75rem" }}
+          title="登録した都道府県"
         >
           <span>📍 拠点: {currentPref.name}</span>
-          <span style={{ fontSize: "10px", opacity: 0.8 }}>[変更]</span>
-        </button>
+        </div>
       </div>
 
       {/* ナビゲーションリンク */}
@@ -66,8 +65,19 @@ export default function Navbar() {
 
       {/* プレイヤーステータス要約 & 音声切替 */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+        <button
+          className="quick-save-btn"
+          onClick={() => {
+            manualSave();
+            setSaveNotice(true);
+            window.setTimeout(() => setSaveNotice(false), 1800);
+          }}
+          aria-label="現在のゲームを手動セーブ"
+        >
+          {saveNotice ? "保存しました" : "💾 手動セーブ"}
+        </button>
         <div className="navbar-player-identity" title={player.name}>
-          <PlayerAvatar appearance={player.appearance} size={38} />
+          <CharacterPortrait appearance={player.appearance} size={38} />
           <span>{player.name}</span>
         </div>
         <div className="badge badge-amber" style={{ padding: "0.35rem 0.75rem" }}>
@@ -79,14 +89,6 @@ export default function Navbar() {
           <span>⭐ Lv.{player.level}</span>
         </div>
 
-        <button
-          className="btn-ghost"
-          onClick={() => SoundManager.toggleMute()}
-          style={{ padding: "0.4rem 0.6rem", borderRadius: "50%", fontSize: "0.9rem" }}
-          title="音量切り替え"
-        >
-          🔊
-        </button>
       </div>
     </header>
   );

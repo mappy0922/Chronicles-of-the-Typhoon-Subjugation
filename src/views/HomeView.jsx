@@ -3,7 +3,7 @@ import { useGame } from "../game/context/GameContext";
 import WeatherRadar from "../components/WeatherRadar";
 import { HISTORICAL_TYPHOONS } from "../game/constants/typhoonTypes";
 import { PREFECTURES } from "../game/constants/prefectures";
-import PlayerAvatar from "../components/PlayerAvatar";
+import CharacterPortrait from "../components/CharacterPortrait";
 
 export default function HomeView() {
   const {
@@ -14,7 +14,6 @@ export default function HomeView() {
     loadTyphoonPreset,
     spawnRandomTyphoon,
     setCurrentView,
-    setIsPrefModalOpen
   } = useGame();
 
   const currentPref = PREFECTURES.find((p) => p.id === player.prefectureId) || PREFECTURES[13];
@@ -34,7 +33,7 @@ export default function HomeView() {
           </div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            <div className="home-player-identity"><PlayerAvatar appearance={player.appearance} size={84} /><div><strong>{player.name}</strong><span>{currentPref.name} 出身</span></div></div>
+            <div className="home-player-identity"><CharacterPortrait appearance={player.appearance} size={84} /><div><strong>{player.name}</strong><span>{currentPref.name} 出身</span></div></div>
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.85rem", marginBottom: "4px" }}>
                 <span style={{ color: "var(--text-secondary)" }}>HP (体力)</span>
@@ -172,9 +171,9 @@ export default function HomeView() {
               <span>🗾</span>
               <span>全国気象レーダー & 警戒域マップ</span>
             </div>
-            <button className="btn-ghost" onClick={() => setIsPrefModalOpen(true)} style={{ fontSize: "0.8rem", padding: "0.3rem 0.6rem" }}>
+            <div className="btn-ghost" style={{ fontSize: "0.8rem", padding: "0.3rem 0.6rem", cursor: "default" }}>
               📍 拠点: {currentPref.name}
-            </button>
+            </div>
           </div>
 
           <WeatherRadar width={480} height={460} interactive={true} />

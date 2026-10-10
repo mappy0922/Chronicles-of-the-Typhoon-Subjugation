@@ -234,18 +234,19 @@ export function GameProvider({ children }) {
     setTyphoonPos({ x: 180, y: 560 });
     
     setIsInTitleScreen(false);
-    setIsInIntroSequence(true); // 導入シーケンス起動
+    setIsInIntroSequence(false);
+    setIsInCharacterCreation(true);
   };
 
   // 導入シーケンス完了時（無音で本編へ）
   const finishIntroSequence = () => {
     setIsInIntroSequence(false);
-    setIsInCharacterCreation(true);
+    setCurrentView("home");
   };
 
   const completeCharacterCreation = () => {
     setIsInCharacterCreation(false);
-    setCurrentView("home");
+    setIsInIntroSequence(true);
   };
 
   // Continue: 手動セーブデータを復元して開始（無音で本編へ）
@@ -279,6 +280,7 @@ export function GameProvider({ children }) {
   const returnToTitle = () => {
     setIsInTitleScreen(true);
     setIsInIntroSequence(false);
+    setIsInCharacterCreation(false);
   };
 
   // --- アクション関数群 ---
