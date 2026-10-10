@@ -6,6 +6,8 @@ class SoundManagerClass {
     this.ctx = null;
     this.isMuted = false;
     this.ambientAudio = null;
+    this.rainIntensity = 0;
+    this.rainFadeTimer = null;
   }
 
   init() {
@@ -26,16 +28,42 @@ class SoundManagerClass {
       this.ambientAudio = new Audio("/soft_natural_rain.wav");
       this.ambientAudio.loop = true;
       this.ambientAudio.preload = "auto";
-      this.ambientAudio.volume = 0.18;
+      this.ambientAudio.volume = 0;
     }
     this.ambientAudio.muted = this.isMuted;
-    this.ambientAudio.play().catch(() => {});
+    this.syncRainPlayback();
+  }
+
+  setRainIntensity(intensity) {
+    this.rainIntensity = Math.max(0, Math.min(1, intensity));
+    this.startRain();
+  }
+
+  syncRainPlayback() {
+    if (!this.ambientAudio) return;
+    if (this.rainFadeTimer === null) {
+      this.rainFadeTimer = window.setInterval(() => {
+        if (!this.ambientAudio) return;
+        const targetVolume = this.isMuted ? 0 : this.rainIntensity * 0.2;
+        const difference = targetVolume - this.ambientAudio.volume;
+        if (Math.abs(difference) < 0.003) {
+          this.ambientAudio.volume = targetVolume;
+          if (targetVolume === 0) this.ambientAudio.pause();
+          return;
+        }
+        this.ambientAudio.volume += difference * 0.12;
+      }, 50);
+    }
+    this.ambientAudio.muted = this.isMuted;
+    if (targetVolume > 0 && this.ambientAudio.paused) {
+      this.ambientAudio.play().catch(() => {});
+    }
   }
 
   toggleMute() {
     this.startRain();
     this.isMuted = !this.isMuted;
-    if (this.ambientAudio) this.ambientAudio.muted = this.isMuted;
+    this.syncRainPlayback();
     return this.isMuted;
   }
 

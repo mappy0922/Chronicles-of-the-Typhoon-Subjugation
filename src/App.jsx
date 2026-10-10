@@ -18,6 +18,8 @@ import EncyclopediaView from "./views/EncyclopediaView";
 import SaveView from "./views/SaveView";
 import CharacterCreationView from "./views/CharacterCreationView";
 import AudioControls from "./components/AudioControls";
+import PauseMenu from "./components/PauseMenu";
+import GameWorldScene from "./components/GameWorldScene";
 
 import "./styles/index.css";
 import "./styles/title-screen.css";
@@ -37,6 +39,10 @@ function GameApp() {
 
   if (isInCharacterCreation) {
     return <CharacterCreationView />;
+  }
+
+  if (currentView === "home") {
+    return <GameWorldScene />;
   }
 
   // 3. ゲーム本編画面
@@ -75,6 +81,7 @@ export default function App() {
     <GameProvider>
       <AudioControls />
       <GameApp />
+      <PauseMenu />
     </GameProvider>
   );
 }

@@ -1,12 +1,11 @@
-import React, { useState } from "react";
+import React from "react";
 import { useGame } from "../game/context/GameContext";
 import { PREFECTURES } from "../game/constants/prefectures";
 import { SoundManager } from "../game/services/SoundManager";
 import CharacterPortrait from "./CharacterPortrait";
 
 export default function Navbar() {
-  const { player, currentView, setCurrentView, returnToTitle, manualSave } = useGame();
-  const [saveNotice, setSaveNotice] = useState(false);
+  const { player, currentView, setCurrentView } = useGame();
   const currentPref = PREFECTURES.find((p) => p.id === player.prefectureId) || PREFECTURES[13];
 
   const navItems = [
@@ -22,16 +21,6 @@ export default function Navbar() {
   return (
     <header className="navbar">
       <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-        {/* タイトルへ戻るボタン */}
-        <button
-          className="btn-ghost"
-          onClick={returnToTitle}
-          style={{ padding: "0.35rem 0.75rem", fontSize: "0.85rem", color: "var(--accent-cyan)", borderColor: "rgba(0, 242, 254, 0.4)" }}
-          title="タイトル画面へ戻る"
-        >
-          <span>タイトルへ</span>
-        </button>
-
         <div className="brand-title" onClick={() => setCurrentView("home")} style={{ cursor: "pointer" }}>
           <span>イラつく台風ぶっ飛ばしゲーム</span>
         </div>
@@ -65,17 +54,6 @@ export default function Navbar() {
 
       {/* プレイヤーステータス要約 & 音声切替 */}
       <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-        <button
-          className="quick-save-btn"
-          onClick={() => {
-            manualSave();
-            setSaveNotice(true);
-            window.setTimeout(() => setSaveNotice(false), 1800);
-          }}
-          aria-label="現在のゲームを手動セーブ"
-        >
-          {saveNotice ? "保存しました" : "💾 手動セーブ"}
-        </button>
         <div className="navbar-player-identity" title={player.name}>
           <CharacterPortrait appearance={player.appearance} size={38} />
           <span>{player.name}</span>

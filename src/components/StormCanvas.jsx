@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from "react";
 import { useGame } from "../game/context/GameContext";
 
-export default function StormCanvas({ isBattle = false }) {
+export default function StormCanvas({ isBattle = false, strengthBased = false, flashAboveGround = false }) {
   const canvasRef = useRef(null);
   const { proximityInfo, activeTyphoon } = useGame();
 
@@ -19,11 +19,17 @@ export default function StormCanvas({ isBattle = false }) {
     window.addEventListener("resize", resize);
 
     // 警戒度に応じた雨量・風速パーティクル設定
+    const typhoonStrength = Math.max(0, Math.min(1, ((activeTyphoon.maxWind || 20) - 20) / 45));
     let rainCount = 20;
     let windSpeed = 3;
     let thunderChance = 0;
 
-    if (isBattle || proximityInfo.alertPhase === "strike") {
+    if (strengthBased) {
+      const phaseRain = { calm: 0, alert: 0.18, prep: 0.42, strike: 1 }[proximityInfo.alertPhase] ?? 0;
+      rainCount = Math.round((10 + typhoonStrength * 170) * phaseRain);
+      windSpeed = 3 + typhoonStrength * 19;
+      thunderChance = proximityInfo.alertPhase === "strike" ? 0.003 + typhoonStrength * 0.012 : 0;
+    } else if (isBattle || proximityInfo.alertPhase === "strike") {
       rainCount = 180;
       windSpeed = 22;
       thunderChance = 0.015;
@@ -53,7 +59,7 @@ export default function StormCanvas({ isBattle = false }) {
       // 雷光フラッシュ
       if (lightningTimer > 0) {
         ctx.fillStyle = `rgba(255, 255, 255, ${lightningTimer * 0.15})`;
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, canvas.width, flashAboveGround ? canvas.height * 0.65 : canvas.height);
         lightningTimer--;
       } else if (Math.random() < thunderChance) {
         lightningTimer = Math.floor(Math.random() * 4) + 2;
@@ -87,7 +93,7 @@ export default function StormCanvas({ isBattle = false }) {
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animationId);
     };
-  }, [proximityInfo.alertPhase, isBattle, activeTyphoon]);
+  }, [proximityInfo.alertPhase, isBattle, activeTyphoon, strengthBased, flashAboveGround]);
 
   return (
     <canvas

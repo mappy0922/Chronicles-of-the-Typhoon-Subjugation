@@ -75,6 +75,12 @@ body {
   padding: 1.5rem 1rem 4rem 1rem;
 }
 
+.pause-menu-backdrop { position: fixed; inset: 0; z-index: 1500; display: grid; place-items: center; padding: 1rem; background: rgba(2, 8, 18, .72); backdrop-filter: blur(8px); }
+.pause-menu { display: grid; gap: .9rem; width: min(100%, 380px); padding: 1.5rem; border: 1px solid var(--border-glow); border-radius: var(--radius-lg); background: #0d1729; box-shadow: var(--glow-cyan); text-align: center; }
+.pause-menu h2 { margin: 0; }
+.pause-menu p { margin: 0; color: var(--text-secondary); }
+.pause-menu-resume { border: 0; padding: .6rem; color: var(--text-secondary); background: transparent; cursor: pointer; }
+
 .global-audio-toggle {
   position: fixed;
   top: 1rem;
