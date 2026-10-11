@@ -240,7 +240,7 @@
 .character-review-list > div { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; padding: .8rem 1rem; border: 1px solid var(--border-subtle); border-radius: 10px; background: rgba(255,255,255,.035); text-align: center; }
 .character-review-list dt { color: var(--text-secondary); font-weight: 700; }
 .character-review-list dd { margin: 0; font-weight: 800; overflow-wrap: anywhere; }
-.character-lock-warning { color: var(--accent-amber); font-weight: 800; }
+.character-lock-warning { color: #ff4d4f; font-weight: 800; }
 .character-setup-content .character-review-list,
 .character-setup-content .character-lock-warning { text-align: center; }
 .creation-field input, .creation-field select { width: 100%; color: var(--text-primary); background: rgba(2, 6, 23, .8); border: 1px solid var(--border-subtle); border-radius: 10px; padding: .85rem 1rem; font: inherit; }

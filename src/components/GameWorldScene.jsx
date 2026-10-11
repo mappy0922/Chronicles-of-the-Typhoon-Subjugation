@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "../game/context/GameContext";
 import CharacterPortrait from "./CharacterPortrait";
 import StormCanvas from "./StormCanvas";
@@ -34,21 +34,131 @@ const HOUSE_LAYOUTS = [
       ["modan_house-cutout.png", "1%", "30%"], ["romantic_house-cutout.png", "36%", "32%"],
       ["natural_house-cutout.png", "69%", "30%"]
     ]
+  },
+  {
+    back: [
+      ["romantic_house-cutout.png", "-12%", "24%"], ["modan_house-cutout.png", "16%", "22%"],
+      ["natural_house-cutout.png", "43%", "25%"], ["romantic_house-cutout.png", "73%", "24%"]
+    ],
+    front: [
+      ["modan_house-cutout.png", "-4%", "27%"], ["natural_house-cutout.png", "25%", "27%"],
+      ["romantic_house-cutout.png", "54%", "27%"], ["modan_house-cutout.png", "82%", "27%"]
+    ]
   }
 ];
-const MAP_NAMES = ["訓練場", "住宅街", "農場"];
+const MAP_NAMES = ["訓練場", "住宅街", "農場", "商店街"];
 
-const makeGrass = (count) => Array.from({ length: count }, (_, index) => ({
-  left: `${(index * 37.7) % 100}%`,
-  height: `${42 + ((index * 17) % 59)}%`,
-  lean: `${((index * 13) % 25) - 12}deg`,
-  delay: `${-((index * 7) % 20) / 10}s`
-}));
+const grassRandom = (seed) => {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return value - Math.floor(value);
+};
 
-function Grass({ blades }) {
-  return blades.map((blade, index) => (
-    <span key={index} className="world-grass-blade" style={{ left: blade.left, height: blade.height, "--lean": blade.lean, "--sway-delay": blade.delay }} />
-  ));
+const makeGrass = (count) => Array.from({ length: count }, (_, index) => {
+  const depth = grassRandom(index + 1);
+  return {
+    left: grassRandom(index + 1201) * 100,
+    // Grass higher on the ground plane is farther away, so make it shorter.
+    depth,
+    height: `${4 + (1 - depth) * (12 + grassRandom(index + 2401) * 11.8)}%`,
+    lean: `${grassRandom(index + 3601) * 24 - 12}deg`,
+    delay: `${-grassRandom(index + 4801) * 2}s`
+  };
+});
+
+function Grass({ blades, playerPosition, mapIndex, moving }) {
+  const canvasRef = useRef(null);
+  const [hiddenIndexes, setHiddenIndexes] = useState(() => new Set());
+
+  useLayoutEffect(() => {
+    const updateOverlaps = () => {
+      const canvas = canvasRef.current;
+      const map = canvas?.closest(".world-map-content");
+      if (!canvas || !map) return;
+
+      const grassBounds = canvas.getBoundingClientRect();
+      const houseBounds = [...map.querySelectorAll(".world-house")].map((house) => house.getBoundingClientRect());
+      const playerBounds = map.querySelector(".world-player")?.getBoundingClientRect();
+      const upperBodyBottom = playerBounds ? playerBounds.bottom - playerBounds.height * 0.18 : 0;
+      const hidden = new Set();
+
+      blades.forEach((blade, index) => {
+        const x = grassBounds.left + (blade.left / 100) * grassBounds.width;
+        const baseY = grassBounds.bottom - blade.depth * 0.96 * grassBounds.height;
+        const bladeHeight = Math.max(4, (Number.parseFloat(blade.height) / 100) * grassBounds.height);
+        const topY = baseY - bladeHeight;
+        const halfWidth = Math.max(2, bladeHeight * 0.2);
+        const overlapsHouse = houseBounds.some((house) =>
+          x + halfWidth >= house.left && x - halfWidth <= house.right &&
+          topY <= house.bottom && baseY >= house.top
+        );
+        const overlapsCharacter = playerBounds &&
+          x + halfWidth >= playerBounds.left && x - halfWidth <= playerBounds.right &&
+          topY <= upperBodyBottom && baseY >= playerBounds.top;
+
+        if (overlapsHouse || overlapsCharacter) hidden.add(index);
+      });
+
+      setHiddenIndexes((previous) => {
+        if (previous.size === hidden.size && [...previous].every((index) => hidden.has(index))) return previous;
+        return hidden;
+      });
+    };
+
+    updateOverlaps();
+    window.addEventListener("resize", updateOverlaps);
+    return () => window.removeEventListener("resize", updateOverlaps);
+  }, [blades, playerPosition, mapIndex, moving]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+
+    let frameId;
+    let lastDraw = 0;
+    const palette = ["#397f3b", "#478f40", "#579f45", "#68af4a", "#79bd50"];
+    const draw = (timestamp) => {
+      if (timestamp - lastDraw >= 1000 / 30) {
+        lastDraw = timestamp;
+        const bounds = canvas.getBoundingClientRect();
+        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+        const width = Math.max(1, Math.round(bounds.width * pixelRatio));
+        const height = Math.max(1, Math.round(bounds.height * pixelRatio));
+        if (canvas.width !== width || canvas.height !== height) {
+          canvas.width = width;
+          canvas.height = height;
+        }
+        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        context.clearRect(0, 0, bounds.width, bounds.height);
+
+        const bladeWidth = Math.max(2, Math.min(4, window.innerWidth * 0.0028));
+        blades.forEach((blade, index) => {
+          if (hiddenIndexes.has(index)) return;
+          const x = (blade.left / 100) * bounds.width;
+          const baseY = bounds.height * (1 - blade.depth * 0.96);
+          const bladeHeight = Math.max(4, (Number.parseFloat(blade.height) / 100) * bounds.height);
+          const sway = Math.sin((timestamp / 850 + Number.parseFloat(blade.delay)) * Math.PI) * 3.5 + 0.5;
+          const angle = ((Number.parseFloat(blade.lean) + sway) * Math.PI) / 180;
+          const tipX = x + Math.sin(angle) * bladeHeight;
+          const tipY = baseY - Math.cos(angle) * bladeHeight;
+
+          context.beginPath();
+          context.moveTo(x - bladeWidth / 2, baseY);
+          context.quadraticCurveTo(x - bladeWidth * 0.2, baseY - bladeHeight * 0.55, tipX, tipY);
+          context.quadraticCurveTo(x + bladeWidth * 0.5, baseY - bladeHeight * 0.48, x + bladeWidth / 2, baseY);
+          context.closePath();
+          context.fillStyle = palette[Math.min(4, Math.floor((1 - blade.depth) * 5))];
+          context.fill();
+        });
+      }
+      frameId = window.requestAnimationFrame(draw);
+    };
+
+    frameId = window.requestAnimationFrame(draw);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [blades, hiddenIndexes]);
+
+  return <canvas ref={canvasRef} className="world-grass-foreground" aria-hidden="true" />;
 }
 
 export default function GameWorldScene() {
@@ -63,8 +173,10 @@ export default function GameWorldScene() {
   const positionRef = useRef(48);
   const transitionRef = useRef("idle");
   const transitionTimers = useRef([]);
+  const movementInterval = useRef(null);
+  const shiftHeld = useRef(false);
   positionRef.current = position;
-  const grass = makeGrass(520);
+  const grass = useMemo(() => makeGrass(1200), []);
 
   const moveMap = (direction) => {
     const nextMap = mapIndexRef.current + direction;
@@ -92,31 +204,70 @@ export default function GameWorldScene() {
   };
 
   useEffect(() => {
-    let stopTimer;
-    const onKeyDown = (event) => {
-      if (event.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
-      if (event.key.toLowerCase() !== "a" && event.key.toLowerCase() !== "d") return;
-      event.preventDefault();
-      if (transitionRef.current !== "idle") return;
-      const direction = event.key.toLowerCase() === "d" ? 1 : -1;
+    const stopMovement = () => {
+      if (movementInterval.current) {
+        window.clearInterval(movementInterval.current);
+        movementInterval.current = null;
+      }
+      setMoving(false);
+    };
+
+    const moveOneStep = (direction) => {
+      if (transitionRef.current !== "idle") {
+        stopMovement();
+        return;
+      }
       setFacing(direction);
-      const nextPosition = Math.max(0, Math.min(100, positionRef.current + direction * 2.5));
+      const stepSize = shiftHeld.current ? 2.6 : 1.5;
+      const nextPosition = Math.max(0, Math.min(100, positionRef.current + direction * stepSize));
       positionRef.current = nextPosition;
       setPosition(nextPosition);
-      setMoving(true);
       if (nextPosition === 0 || nextPosition === 100) {
         const mapDirection = nextPosition === 100 ? 1 : -1;
         if (mapIndexRef.current + mapDirection >= 0 && mapIndexRef.current + mapDirection < HOUSE_LAYOUTS.length) {
+          stopMovement();
           moveMap(mapDirection);
         }
       }
-      window.clearTimeout(stopTimer);
-      stopTimer = window.setTimeout(() => setMoving(false), 180);
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === "Shift") {
+        shiftHeld.current = true;
+        return;
+      }
+      if (event.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
+      if (event.key.toLowerCase() !== "a" && event.key.toLowerCase() !== "d") return;
+      event.preventDefault();
+      shiftHeld.current = event.shiftKey;
+      if (event.repeat || transitionRef.current !== "idle") return;
+      const direction = event.key.toLowerCase() === "d" ? 1 : -1;
+      stopMovement();
+      setMoving(true);
+      moveOneStep(direction);
+      movementInterval.current = window.setInterval(() => moveOneStep(direction), 100);
+    };
+
+    const onKeyUp = (event) => {
+      if (event.key === "Shift") {
+        shiftHeld.current = false;
+        return;
+      }
+      if (event.key.toLowerCase() === "a" || event.key.toLowerCase() === "d") stopMovement();
+    };
+
+    const onBlur = () => {
+      shiftHeld.current = false;
+      stopMovement();
     };
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
-      window.clearTimeout(stopTimer);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+      stopMovement();
       transitionTimers.current.forEach((timer) => window.clearTimeout(timer));
     };
   }, []);
@@ -139,16 +290,15 @@ export default function GameWorldScene() {
         <div className="world-sky" />
         <div className="world-night-shade" />
         <div className="world-sun" />
-        <div className="world-cloud world-cloud-one" />
-        <div className="world-cloud world-cloud-two" />
         <div className="world-houses" aria-hidden="true">
           {houses.back.map(([src, left, width], index) => <img key={`back-${index}`} className="world-house world-house-back" src={`/${src}`} alt="" style={{ left, width }} />)}
           {houses.front.map(([src, left, width], index) => <img key={`front-${index}`} className={`world-house world-house-front ${index === houses.front.length - 1 ? "world-house-front-right" : ""}`} src={`/${src}`} alt="" style={{ left, width }} />)}
         </div>
-        <div className="world-ground"><Grass blades={grass} /></div>
+        <div className="world-ground" />
         <div className={`world-player ${moving ? "is-walking" : ""}`} style={{ left: `${position}%`, "--facing": facing }}>
           <CharacterPortrait appearance={player.appearance} size={112} />
         </div>
+        <Grass blades={grass} playerPosition={position} mapIndex={mapIndex} moving={moving} />
         <StormCanvas strengthBased flashAboveGround />
       </div>
       {isMapNameVisible && <div key={mapLabelKey} className="map-name-indicator" aria-live="polite">{MAP_NAMES[mapIndex]}</div>}
