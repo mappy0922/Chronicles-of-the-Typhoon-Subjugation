@@ -296,15 +296,16 @@ export default function GameWorldScene() {
   }, []);
 
   const approach = Math.max(0, Math.min(1, weatherInfo.stormIntensity || 0));
-  const skyDarkness = Math.max(approach, (weatherInfo.cloudiness || 0) * 0.28);
-  const celestialFade = Math.max(approach, (weatherInfo.cloudiness || 0) * 0.8);
+  const nightIntensity = Math.max(0, Math.min(1, weatherInfo.nightIntensity ?? approach));
+  const skyDarkness = Math.max(nightIntensity, approach, (weatherInfo.cloudiness || 0) * 0.28);
+  const celestialFade = Math.max(nightIntensity, (weatherInfo.cloudiness || 0) * 0.8);
   const isStrike = proximityInfo.alertPhase === "strike";
   const houses = HOUSE_LAYOUTS[mapIndex];
   const isMapVisible = mapTransition === "idle" || mapTransition === "fade-in";
   const isMapNameVisible = mapTransition === "idle" || mapTransition === "fade-in";
 
   return (
-    <section className={`game-world ${isStrike ? "is-strike" : ""}`} style={{ "--storm-darkness": skyDarkness, "--night-opacity": approach, "--celestial-opacity": 1 - celestialFade }} aria-label="草原のゲームフィールド">
+    <section className={`game-world ${isStrike ? "is-strike" : ""}`} style={{ "--storm-darkness": skyDarkness, "--night-opacity": nightIntensity, "--celestial-opacity": 1 - celestialFade }} aria-label="草原のゲームフィールド">
       <div className={`world-map-content ${isMapVisible ? "is-visible" : ""}`}>
         <div className="world-sky" />
         <div className="world-night-shade" />

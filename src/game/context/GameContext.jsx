@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useRef } from "react";
 import { PREFECTURES } from "../constants/prefectures";
 import { WEAPONS, ARMORS } from "../constants/equipment";
 import { CROPS } from "../constants/crops";
@@ -11,6 +11,15 @@ import { DEFAULT_APPEARANCE } from "../../components/PlayerAvatar";
 const GameContext = createContext(null);
 
 const STORAGE_KEY = "TYPHOON_SUBJUGATION_MANUAL_SAVE_V1";
+const WEATHER_CONTROL_KEY = "TYPHOON_SUBJUGATION_FORCED_WEATHER_V1";
+const WEATHER_PRESETS = {
+  sunny: { weatherText: "晴れ", isRaining: false, rainIntensity: 0, cloudiness: 0.02, stormIntensity: 0, nightIntensity: 0 },
+  breeze: { weatherText: "そよかぜ型", isRaining: true, rainIntensity: 0.12, cloudiness: 0.22, stormIntensity: 0.16, nightIntensity: 1 },
+  heavyRain: { weatherText: "豪雨型", isRaining: true, rainIntensity: 0.82, cloudiness: 0.8, stormIntensity: 0.42, nightIntensity: 1 },
+  gale: { weatherText: "暴風型", isRaining: true, rainIntensity: 0.48, cloudiness: 0.78, stormIntensity: 0.78, nightIntensity: 1 },
+  storm: { weatherText: "嵐型", isRaining: true, rainIntensity: 0.78, cloudiness: 0.92, stormIntensity: 0.9, nightIntensity: 1 },
+  superTyphoon: { weatherText: "超大型型", isRaining: true, rainIntensity: 1, cloudiness: 1, stormIntensity: 1, nightIntensity: 1 }
+};
 
 // 初期プレイヤーデータ
 const DEFAULT_PLAYER = {
@@ -118,6 +127,10 @@ export function GameProvider({ children }) {
   const [activeTyphoon, setActiveTyphoon] = useState(() => WeatherService.getActiveTyphoon("typhoon-201821"));
   const [typhoonPos, setTyphoonPos] = useState({ x: 180, y: 560 });
   const [weatherInfo, setWeatherInfo] = useState({ status: "loading", isRaining: false, rainIntensity: 0, cloudiness: 0.04, stormIntensity: 0 });
+  const weatherInfoRef = useRef(weatherInfo);
+  const jmaWeatherInfoRef = useRef(null);
+  const jmaProximityInfoRef = useRef(null);
+  useEffect(() => { weatherInfoRef.current = weatherInfo; }, [weatherInfo]);
   const [proximityInfo, setProximityInfo] = useState({
     distanceKm: 800,
     alertPhase: "calm",
@@ -171,7 +184,9 @@ export function GameProvider({ children }) {
     const refreshWeather = async () => {
       const result = await JmaWeatherService.getLocalConditions(player.prefectureId);
       if (!isActive) return;
-      setWeatherInfo(result.weatherInfo);
+      jmaWeatherInfoRef.current = result.weatherInfo;
+      jmaProximityInfoRef.current = result.proximityInfo;
+      if (!localStorage.getItem(WEATHER_CONTROL_KEY)) setWeatherInfo(result.weatherInfo);
       setProximityInfo(result.proximityInfo);
     };
     refreshWeather();
@@ -181,6 +196,85 @@ export function GameProvider({ children }) {
       window.clearInterval(interval);
     };
   }, [player.prefectureId]);
+
+  // 管理画面から受け取った天候を、複数タブ間で同期して滑らかに反映する。
+  useEffect(() => {
+    let frameId = 0;
+    let activeTransition = null;
+    const channel = "BroadcastChannel" in window ? new BroadcastChannel("typhoon-weather-control") : null;
+
+    const transitionWeather = (target, options = {}) => {
+      if (!target) return;
+      cancelAnimationFrame(frameId);
+      const start = { ...weatherInfoRef.current };
+      const startedAt = performance.now();
+      const duration = 4200;
+      activeTransition = () => {
+        const progress = Math.min(1, (performance.now() - startedAt) / duration);
+        const eased = progress * progress * (3 - 2 * progress);
+        const interpolate = (key) => (Number(start[key]) || 0) + ((Number(target[key]) || 0) - (Number(start[key]) || 0)) * eased;
+        const nextWeather = {
+          ...weatherInfoRef.current,
+          status: "ready",
+          weatherText: options.weatherText ?? target.weatherText,
+          isRaining: interpolate("rainIntensity") > 0.015,
+          rainIntensity: interpolate("rainIntensity"),
+          cloudiness: interpolate("cloudiness"),
+          stormIntensity: interpolate("stormIntensity"),
+          nightIntensity: interpolate("nightIntensity"),
+          typhoonName: options.typhoonName ?? target.typhoonName ?? null,
+          distanceKm: options.distanceKm ?? target.distanceKm ?? null
+        };
+        weatherInfoRef.current = nextWeather;
+        setWeatherInfo(nextWeather);
+        if (progress < 1) frameId = requestAnimationFrame(activeTransition);
+        else if (options.proximityInfo) setProximityInfo(options.proximityInfo);
+      };
+      frameId = requestAnimationFrame(activeTransition);
+    };
+
+    const transitionToPreset = (message) => {
+      const target = WEATHER_PRESETS[message?.preset];
+      if (!target) return;
+      transitionWeather(target, {
+        weatherText: target.weatherText,
+        typhoonName: message.preset === "sunny" ? null : target.weatherText,
+        distanceKm: message.preset === "sunny" ? null : 0
+      });
+    };
+    const transitionToJma = () => {
+      const target = jmaWeatherInfoRef.current || {
+        status: "loading", weatherText: "気象庁データ取得中", isRaining: false,
+        rainIntensity: 0, cloudiness: 0.04, stormIntensity: 0, nightIntensity: 0,
+        typhoonName: null, distanceKm: null
+      };
+      transitionWeather(target, { proximityInfo: jmaProximityInfoRef.current });
+    };
+    const onMessage = (event) => {
+      if (event.data?.action === "clear") transitionToJma();
+      else transitionToPreset(event.data);
+    };
+    const onStorage = (event) => {
+      if (event.key !== WEATHER_CONTROL_KEY) return;
+      if (!event.newValue) {
+        if (!channel) transitionToJma();
+        return;
+      }
+      try { transitionToPreset(JSON.parse(event.newValue)); } catch { /* ignore invalid stored state */ }
+    };
+    channel?.addEventListener("message", onMessage);
+    window.addEventListener("storage", onStorage);
+    try {
+      const saved = localStorage.getItem(WEATHER_CONTROL_KEY);
+      if (saved) transitionToPreset(JSON.parse(saved));
+    } catch { /* ignore invalid stored state */ }
+    return () => {
+      cancelAnimationFrame(frameId);
+      channel?.removeEventListener("message", onMessage);
+      channel?.close();
+      window.removeEventListener("storage", onStorage);
+    };
+  }, []);
 
   // 台風の自動移動（本編プレイ時のみ）
   // 作物の成長タイマー（本編プレイ時のみ）

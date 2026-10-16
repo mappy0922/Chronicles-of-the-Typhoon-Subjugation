@@ -14,14 +14,14 @@
 .game-world::after { content:""; position:absolute; z-index:2; inset:0; pointer-events:none; background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px); background-size:48px 48px; }
 .world-sun { position: absolute; z-index:3; top: 12%; right: 12%; width: 58px; height: 58px; border-radius: 50%; background: #fff3a3; box-shadow: 0 0 42px 12px rgba(255,238,142,.65); opacity: var(--celestial-opacity); transition: opacity 6s ease; }
 .world-houses { position:absolute; z-index:5; inset:0; pointer-events:none; }
-.world-house { position:absolute; bottom:31.5%; display:block; max-height:43vh; object-fit:contain; object-position:center bottom; filter:brightness(calc(1 - var(--storm-darkness) * .36)); transition:filter 2s ease; }
+.world-house { position:absolute; bottom:31.5%; display:block; max-height:43vh; object-fit:contain; object-position:center bottom; filter:brightness(calc(1 - var(--storm-darkness) * .36)); transition:filter 6s ease; }
 .world-house-back { z-index:0; transform:scale(.85); transform-origin:center bottom; }
 .world-house-front { z-index:1; }
 .world-house-front-right { transform:translateY(.5vh); }
-.world-ground { position:absolute; z-index:4; inset:auto 0 0; height:35%; overflow:hidden; background:linear-gradient(#65bd50,#378b3e); border-top:5px solid rgba(144,218,104,.75); filter:brightness(calc(1 - var(--storm-darkness) * .68)); }
+.world-ground { position:absolute; z-index:4; inset:auto 0 0; height:35%; overflow:hidden; background:linear-gradient(#65bd50,#378b3e); border-top:5px solid rgba(144,218,104,.75); filter:brightness(calc(1 - var(--storm-darkness) * .68)); transition:filter 6s ease; }
 .world-grass-foreground { display:block; width:100%; }
 .world-player { position:absolute; z-index:6; bottom:20%; display:flex; flex-direction:column; align-items:center; transform:translateX(-50%); transition:left .1s linear; }
-.world-grass-foreground { position:absolute; z-index:7; inset:auto 0 0; height:35%; overflow:hidden; pointer-events:none; filter:brightness(calc(1 - var(--storm-darkness) * .68)); }
+.world-grass-foreground { position:absolute; z-index:7; inset:auto 0 0; height:35%; overflow:hidden; pointer-events:none; filter:brightness(calc(1 - var(--storm-darkness) * .68)); transition:filter 6s ease; }
 .world-player img { height:clamp(95px,20vh,180px)!important; width:auto!important; filter:drop-shadow(0 5px 3px rgba(0,0,0,.3)); }
 .map-loading-indicator { position:absolute; z-index:10; right:1.25rem; bottom:1.1rem; color:white; font-weight:700; letter-spacing:.06em; text-shadow:0 1px 4px rgba(0,0,0,.8); }
 .map-loading-indicator.is-fading { animation:loading-fade-out .4s ease forwards; }

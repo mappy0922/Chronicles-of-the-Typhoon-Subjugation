@@ -29,6 +29,14 @@ export default function PauseMenu() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [canPause]);
 
+  useEffect(() => {
+    if (!canPause) {
+      setIsOpen(false);
+      setScreen("menu");
+      setSaved(false);
+    }
+  }, [canPause]);
+
   if (!canPause || !isOpen) return null;
   const saveAndNotify = () => {
     manualSave();

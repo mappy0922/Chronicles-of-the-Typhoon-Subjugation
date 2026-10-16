@@ -20,6 +20,7 @@ import CharacterCreationView from "./views/CharacterCreationView";
 import AudioControls from "./components/AudioControls";
 import PauseMenu from "./components/PauseMenu";
 import GameWorldScene from "./components/GameWorldScene";
+import AdminPage from "./views/AdminPage";
 
 import "./styles/index.css";
 import "./styles/title-screen.css";
@@ -77,6 +78,10 @@ function GameApp() {
 }
 
 export default function App() {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (path === "/admin") return <AdminPage />;
+  if (path === "/") window.history.replaceState({}, "", "/game");
+
   return (
     <GameProvider>
       <AudioControls />
