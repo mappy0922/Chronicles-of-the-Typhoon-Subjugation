@@ -1,6 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "../game/context/GameContext";
-import CharacterPortrait from "./CharacterPortrait";
 import StormCanvas from "./StormCanvas";
 import "../styles/game-world.css";
 
@@ -35,6 +34,10 @@ const HOUSE_LAYOUTS = [
   }
 ];
 const MAP_NAMES = ["訓練場", "住宅街", "農場", "商店街"];
+const walkFrameSource = (facing, frame) => facing > 0
+  ? `/right_walk_${frame}-cutout.png`
+  : `/left_walk_${frame}-cutout.png`;
+const stopFrameSource = (facing) => facing > 0 ? "/idle_right-cutout.png" : "/idle-cutout.png";
 
 const grassRandom = (seed) => {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
@@ -154,6 +157,8 @@ export default function GameWorldScene() {
   const [position, setPosition] = useState(48);
   const [moving, setMoving] = useState(false);
   const [facing, setFacing] = useState(1);
+  const [fastWalking, setFastWalking] = useState(false);
+  const [walkFrame, setWalkFrame] = useState(1);
   const [mapIndex, setMapIndex] = useState(1);
   const [mapTransition, setMapTransition] = useState("idle");
   const [mapLabelKey, setMapLabelKey] = useState(0);
@@ -165,6 +170,28 @@ export default function GameWorldScene() {
   const shiftHeld = useRef(false);
   positionRef.current = position;
   const grass = useMemo(() => makeGrass(1200), []);
+
+  useEffect(() => {
+    const frameSources = [
+      ...Array.from({ length: 6 }, (_, index) => `/right_walk_${index + 1}-cutout.png`),
+      ...Array.from({ length: 6 }, (_, index) => `/left_walk_${index + 1}-cutout.png`),
+      "/idle_right-cutout.png",
+      "/idle-cutout.png"
+    ];
+    frameSources.forEach((src) => {
+      const image = new Image();
+      image.src = src;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!moving) return undefined;
+    setWalkFrame(1);
+    const frameTimer = window.setInterval(() => {
+      setWalkFrame((frame) => frame % 6 + 1);
+    }, fastWalking ? 220 : 300);
+    return () => window.clearInterval(frameTimer);
+  }, [moving, fastWalking, facing]);
 
   const moveMap = (direction) => {
     const nextMap = mapIndexRef.current + direction;
@@ -222,6 +249,7 @@ export default function GameWorldScene() {
     const onKeyDown = (event) => {
       if (event.key === "Shift") {
         shiftHeld.current = true;
+        setFastWalking(true);
         return;
       }
       if (event.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
@@ -231,6 +259,7 @@ export default function GameWorldScene() {
       if (event.repeat || transitionRef.current !== "idle") return;
       const direction = event.key.toLowerCase() === "d" ? 1 : -1;
       stopMovement();
+      setFastWalking(event.shiftKey);
       setMoving(true);
       moveOneStep(direction);
       movementInterval.current = window.setInterval(() => moveOneStep(direction), 100);
@@ -239,6 +268,7 @@ export default function GameWorldScene() {
     const onKeyUp = (event) => {
       if (event.key === "Shift") {
         shiftHeld.current = false;
+        setFastWalking(false);
         return;
       }
       if (event.key.toLowerCase() === "a" || event.key.toLowerCase() === "d") stopMovement();
@@ -246,6 +276,7 @@ export default function GameWorldScene() {
 
     const onBlur = () => {
       shiftHeld.current = false;
+      setFastWalking(false);
       stopMovement();
     };
     window.addEventListener("keydown", onKeyDown);
@@ -283,8 +314,11 @@ export default function GameWorldScene() {
           {houses.front.map(([src, left, width], index) => <img key={`front-${index}`} className={`world-house world-house-front ${index === houses.front.length - 1 ? "world-house-front-right" : ""}`} src={`/${src}`} alt="" style={{ left, width }} />)}
         </div>
         <div className="world-ground" />
-        <div className={`world-player ${moving ? "is-walking" : ""}`} style={{ left: `${position}%`, "--facing": facing }}>
-          <CharacterPortrait appearance={player.appearance} size={112} />
+        <div className={`world-player ${moving ? "is-walking" : ""}`} style={{ left: `${position}%` }}>
+          <img
+            src={moving ? walkFrameSource(facing, walkFrame) : stopFrameSource(facing)}
+            alt={player.appearance?.gender === "feminine" ? "女性剣士" : "男性剣士"}
+          />
         </div>
         <Grass blades={grass} playerPosition={position} mapIndex={mapIndex} moving={moving} />
         <StormCanvas strengthBased flashAboveGround />

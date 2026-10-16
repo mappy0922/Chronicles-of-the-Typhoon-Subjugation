@@ -20,16 +20,14 @@
 .world-house-front-right { transform:translateY(.5vh); }
 .world-ground { position:absolute; z-index:4; inset:auto 0 0; height:35%; overflow:hidden; background:linear-gradient(#65bd50,#378b3e); border-top:5px solid rgba(144,218,104,.75); filter:brightness(calc(1 - var(--storm-darkness) * .68)); }
 .world-grass-foreground { display:block; width:100%; }
-.world-player { position:absolute; z-index:6; bottom:20%; display:flex; flex-direction:column; align-items:center; transform:translateX(-50%) scaleX(var(--facing)); transition:left .1s linear; }
+.world-player { position:absolute; z-index:6; bottom:20%; display:flex; flex-direction:column; align-items:center; transform:translateX(-50%); transition:left .1s linear; }
 .world-grass-foreground { position:absolute; z-index:7; inset:auto 0 0; height:35%; overflow:hidden; pointer-events:none; filter:brightness(calc(1 - var(--storm-darkness) * .68)); }
 .world-player img { height:clamp(95px,20vh,180px)!important; width:auto!important; filter:drop-shadow(0 5px 3px rgba(0,0,0,.3)); }
-.world-player.is-walking img { animation: player-walk .18s ease-in-out infinite alternate; }
 .map-loading-indicator { position:absolute; z-index:10; right:1.25rem; bottom:1.1rem; color:white; font-weight:700; letter-spacing:.06em; text-shadow:0 1px 4px rgba(0,0,0,.8); }
 .map-loading-indicator.is-fading { animation:loading-fade-out .4s ease forwards; }
 .map-name-indicator { position:absolute; z-index:11; top:1.6rem; left:50%; transform:translateX(-50%); color:white; font-size:clamp(1.1rem,2.2vw,1.7rem); font-weight:800; letter-spacing:.12em; text-shadow:0 2px 8px rgba(0,0,0,.65); white-space:nowrap; pointer-events:none; animation:map-name-appear 2.8s ease both; }
 .is-strike .world-ground { filter:brightness(.35) saturate(.7); }
 .is-strike .world-grass-foreground { filter:brightness(.35) saturate(.7); }
-@keyframes player-walk { from { transform:translateY(0) rotate(-3deg); } to { transform:translateY(-5px) rotate(3deg); } }
 @keyframes loading-fade-out { from { opacity:1; } to { opacity:0; } }
 @keyframes map-name-appear { 0% { opacity:0; translate:0 -8px; } 14% { opacity:1; translate:0 0; } 72% { opacity:1; translate:0 0; } 100% { opacity:0; translate:0 -4px; } }
 @media(max-width:650px) { .world-player img { height:120px!important; } .world-house { max-height:24vh; } }
