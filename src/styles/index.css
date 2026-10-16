@@ -76,14 +76,13 @@ body {
 }
 
 .pause-menu-backdrop { position: fixed; inset: 0; z-index: 1500; display: grid; place-items: center; padding: 1rem; background: rgba(2, 8, 18, .72); backdrop-filter: blur(8px); }
-.pause-menu { display: grid; gap: .9rem; width: min(100%, 460px); max-height: calc(100vh - 2rem); overflow-y: auto; padding: 1.5rem; border: 1px solid var(--border-glow); border-radius: var(--radius-lg); background: #0d1729; box-shadow: var(--glow-cyan); text-align: center; }
+.pause-menu { display: grid; gap: .9rem; width: min(100%, 460px); max-height: calc(100vh - 2rem); overflow-y: auto; padding: 1.5rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-lg); background: #0d1729; box-shadow: 0 15px 45px rgba(0,0,0,.55); text-align: center; }
 .pause-menu h2 { margin: 0; }
 .pause-menu p { margin: 0; color: var(--text-secondary); }
 .pause-menu-resume { border: 0; padding: .6rem; color: var(--text-secondary); background: transparent; cursor: pointer; }
 .pause-volume-settings { display:grid; gap:.65rem; padding:.9rem 1rem; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:rgba(255,255,255,.035); text-align:left; }
-.pause-volume-settings h3 { margin:0 0 .15rem; text-align:center; font-size:1rem; }
 .pause-volume-control { display:grid; grid-template-columns:8.5rem minmax(0,1fr) 2rem; align-items:center; gap:.65rem; color:var(--text-primary); font-size:.9rem; }
-.pause-volume-control input { width:100%; accent-color:var(--accent-cyan); cursor:pointer; }
+.pause-volume-control input { width:100%; accent-color:#fff; cursor:pointer; }
 .pause-volume-control output { color:var(--text-secondary); font-variant-numeric:tabular-nums; text-align:right; }
 
 /* ナビゲーションバー */
@@ -343,12 +342,12 @@ body {
 
 .modal-content {
   background: var(--bg-secondary);
-  border: 1px solid var(--border-glow);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   max-width: 650px;
   width: 100%;
   max-height: 85vh;
   overflow-y: auto;
   padding: 1.75rem;
-  box-shadow: var(--glow-cyan);
+  box-shadow: 0 15px 45px rgba(0, 0, 0, 0.45);
 }

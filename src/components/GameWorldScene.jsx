@@ -6,14 +6,8 @@ import "../styles/game-world.css";
 
 const HOUSE_LAYOUTS = [
   {
-    back: [
-      ["natural_house-cutout.png", "-10%", "28%"], ["romantic_house-cutout.png", "18%", "25%"],
-      ["modan_house-cutout.png", "53%", "27%"], ["natural_house-cutout.png", "83%", "28%"]
-    ],
-    front: [
-      ["romantic_house-cutout.png", "-3%", "32%"], ["natural_house-cutout.png", "34%", "29%"],
-      ["modan_house-cutout.png", "70%", "32%"]
-    ]
+    back: [],
+    front: []
   },
   {
     back: [
@@ -26,14 +20,8 @@ const HOUSE_LAYOUTS = [
     ]
   },
   {
-    back: [
-      ["modan_house-cutout.png", "-12%", "29%"], ["natural_house-cutout.png", "24%", "27%"],
-      ["romantic_house-cutout.png", "51%", "25%"], ["modan_house-cutout.png", "84%", "28%"]
-    ],
-    front: [
-      ["modan_house-cutout.png", "1%", "30%"], ["romantic_house-cutout.png", "36%", "32%"],
-      ["natural_house-cutout.png", "69%", "30%"]
-    ]
+    back: [],
+    front: []
   },
   {
     back: [

@@ -44,18 +44,17 @@ export default function PauseMenu() {
   return (
     <div className="pause-menu-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsOpen(false); }}>
       <section className="pause-menu" role="dialog" aria-modal="true" aria-labelledby="pause-menu-title">
-        <h2 id="pause-menu-title">メニュー</h2>
+        <h2 id="pause-menu-title">{screen === "volume" ? "音量設定" : "メニュー"}</h2>
         {screen === "menu" ? (
           <>
-            <button className="btn-primary" onClick={() => setScreen("volume")}>音量設定</button>
             <button className="btn-ghost" onClick={saveAndNotify}>{saved ? "保存しました" : "セーブする"}</button>
+            <button className="btn-ghost" onClick={() => setScreen("volume")}>音量設定</button>
             <button className="btn-ghost" onClick={returnToTitle}>タイトルに戻る</button>
             <button className="pause-menu-resume" onClick={() => setIsOpen(false)}>ゲームに戻る（Esc）</button>
           </>
         ) : (
           <>
             <div className="pause-volume-settings" aria-label="音量設定">
-              <h3>音量設定</h3>
               {VOLUME_CONTROLS.map(([channel, label]) => (
                 <label className="pause-volume-control" key={channel}>
                   <span>{label}</span>
