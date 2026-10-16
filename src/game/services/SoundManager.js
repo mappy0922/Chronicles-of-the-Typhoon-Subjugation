@@ -12,6 +12,7 @@ class SoundManagerClass {
     this.rainLevel = 0;
     this.volumes = this.loadVolumes();
     this.rainIntensity = 0;
+    this.rainPlaybackAllowed = false;
     this.rainFadeTimer = null;
   }
 
@@ -99,7 +100,18 @@ class SoundManagerClass {
 
   setRainIntensity(intensity) {
     this.rainIntensity = Math.max(0, Math.min(1, intensity));
+    this.rainPlaybackAllowed = this.rainIntensity > 0;
     this.startRain();
+  }
+
+  stopRain() {
+    this.rainIntensity = 0;
+    this.rainPlaybackAllowed = false;
+    this.rainLevel = 0;
+    if (!this.ambientAudio) return;
+    if (this.rainGain) this.rainGain.gain.value = 0;
+    else this.ambientAudio.volume = 0;
+    this.ambientAudio.pause();
   }
 
   syncRainPlayback() {
@@ -121,8 +133,11 @@ class SoundManagerClass {
         else this.ambientAudio.volume = this.rainLevel * this.volumes.ambient / 100 * this.volumes.master / 100;
       }, 50);
     }
-    if (this.rainIntensity > 0 && this.volumes.ambient > 0 && this.volumes.master > 0 && this.ambientAudio.paused) {
-      this.ambientAudio.play().catch(() => {});
+    if (this.rainPlaybackAllowed && this.rainIntensity > 0 && this.volumes.ambient > 0 && this.volumes.master > 0 && this.ambientAudio.paused) {
+      const audio = this.ambientAudio;
+      audio.play().then(() => {
+        if (!this.rainPlaybackAllowed || this.rainIntensity === 0) audio.pause();
+      }).catch(() => {});
     }
   }
 

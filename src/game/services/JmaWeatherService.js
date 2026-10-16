@@ -25,6 +25,7 @@ const FALLBACK_WEATHER = {
   status: "unavailable",
   weatherCode: "100",
   weatherText: "晴れ（気象情報を取得できません）",
+  isRaining: false,
   rainIntensity: 0,
   cloudiness: 0.05,
   stormIntensity: 0,
@@ -73,11 +74,12 @@ function getForecastWeather(forecast, officeCode) {
   const probability = Number(area.pops?.[index] || 0);
   const codeNumber = Number(weatherCode);
   const isRain = (codeNumber >= 300 && codeNumber < 400) || [102, 103, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 130, 131, 132, 140, 160, 170, 181].includes(codeNumber);
-  const rainIntensity = isRain ? Math.max(0.16, probability / 100) : probability >= 60 ? 0.2 : 0;
+  const rainIntensity = isRain ? Math.max(0.16, probability / 100) : 0;
   const cloudiness = codeNumber >= 300 ? 0.62 : codeNumber >= 200 ? 0.34 : codeNumber >= 100 && codeNumber !== 100 ? 0.16 : 0.04;
   return {
     weatherCode,
     weatherText: describeWeather(weatherCode),
+    isRaining: isRain,
     rainIntensity: Math.min(1, rainIntensity),
     cloudiness,
     updatedAt: forecast?.[1]?.reportDatetime || forecast?.[0]?.reportDatetime || null
@@ -165,6 +167,7 @@ export class JmaWeatherService {
         ...localWeather,
         ...storm,
         status: "available",
+        isRaining: localWeather.isRaining || storm.stormIntensity > 0,
         rainIntensity: Math.max(localWeather.rainIntensity, storm.stormIntensity * 0.55),
         cloudiness: Math.max(localWeather.cloudiness, storm.stormIntensity * 0.8)
       };

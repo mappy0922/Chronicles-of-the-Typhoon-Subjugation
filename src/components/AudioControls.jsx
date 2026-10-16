@@ -16,14 +16,17 @@ export default function AudioControls() {
   }, []);
 
   useEffect(() => {
-    const isSilentSequence = isInIntroSequence || isInCharacterCreation;
-    const rainIntensity = isSilentSequence
-      ? 0
-      : isInTitleScreen
-        ? 0.32
-        : weatherInfo.rainIntensity || 0;
+    if (isInIntroSequence || isInCharacterCreation) {
+      SoundManager.stopRain();
+      return;
+    }
+    const rainIntensity = isInTitleScreen
+      ? 0.32
+      : weatherInfo.isRaining
+        ? weatherInfo.rainIntensity || 0
+        : 0;
     SoundManager.setRainIntensity(rainIntensity);
-  }, [isInTitleScreen, isInIntroSequence, isInCharacterCreation, weatherInfo.rainIntensity]);
+  }, [isInTitleScreen, isInIntroSequence, isInCharacterCreation, weatherInfo.isRaining, weatherInfo.rainIntensity]);
 
   return null;
 }

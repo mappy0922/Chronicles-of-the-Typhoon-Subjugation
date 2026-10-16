@@ -117,7 +117,7 @@ export function GameProvider({ children }) {
   // 4. 気象・台風シミュレーション状態
   const [activeTyphoon, setActiveTyphoon] = useState(() => WeatherService.getActiveTyphoon("typhoon-201821"));
   const [typhoonPos, setTyphoonPos] = useState({ x: 180, y: 560 });
-  const [weatherInfo, setWeatherInfo] = useState({ status: "loading", rainIntensity: 0, cloudiness: 0.04, stormIntensity: 0 });
+  const [weatherInfo, setWeatherInfo] = useState({ status: "loading", isRaining: false, rainIntensity: 0, cloudiness: 0.04, stormIntensity: 0 });
   const [proximityInfo, setProximityInfo] = useState({
     distanceKm: 800,
     alertPhase: "calm",
