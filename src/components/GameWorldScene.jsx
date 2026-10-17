@@ -40,11 +40,35 @@ const MALE_RIGHT_WALK_FRAMES = [
   "/right_2.png",
   "/right_idle.png"
 ];
+const MALE_LEFT_WALK_FRAMES = [
+  "/left_1.png",
+  "/left_idle.png",
+  "/left_2.png",
+  "/left_idle.png"
+];
+const FEMALE_RIGHT_WALK_FRAMES = [
+  "/woman_right_1.png",
+  "/woman_right_idle.png",
+  "/woman_right_2.png",
+  "/woman_right_idle.png"
+];
+const FEMALE_LEFT_WALK_FRAMES = [
+  "/woman_left_1.png",
+  "/woman_left_idle.png",
+  "/woman_left_2.png",
+  "/woman_left_idle.png"
+];
 const walkFrameSource = (facing, frame, isMale) => {
   if (facing > 0 && isMale) return MALE_RIGHT_WALK_FRAMES[(frame - 1) % MALE_RIGHT_WALK_FRAMES.length];
+  if (facing < 0 && isMale) return MALE_LEFT_WALK_FRAMES[(frame - 1) % MALE_LEFT_WALK_FRAMES.length];
+  if (facing > 0) return FEMALE_RIGHT_WALK_FRAMES[(frame - 1) % FEMALE_RIGHT_WALK_FRAMES.length];
+  if (facing < 0) return FEMALE_LEFT_WALK_FRAMES[(frame - 1) % FEMALE_LEFT_WALK_FRAMES.length];
   return facing > 0 ? `/right_walk_${frame}-cutout.png` : `/left_walk_${frame}-cutout.png`;
 };
-const stopFrameSource = (facing) => facing > 0 ? "/right_idle.png" : "/idle-cutout.png";
+const stopFrameSource = (facing, isMale) => {
+  if (isMale) return facing > 0 ? "/right_idle.png" : "/left_idle.png";
+  return facing > 0 ? "/woman_right_idle.png" : "/woman_left_idle.png";
+};
 
 const grassRandom = (seed) => {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
@@ -76,7 +100,12 @@ function Grass({ blades, playerPosition, mapIndex, moving }) {
       const grassBounds = canvas.getBoundingClientRect();
       const houseBounds = [...map.querySelectorAll(".world-house")].map((house) => house.getBoundingClientRect());
       const playerBounds = map.querySelector(".world-player")?.getBoundingClientRect();
-      const upperBodyBottom = playerBounds ? playerBounds.bottom - playerBounds.height * 0.18 : 0;
+      const characterBounds = playerBounds ? {
+        left: playerBounds.left + playerBounds.width * 0.18,
+        right: playerBounds.right - playerBounds.width * 0.18,
+        top: playerBounds.top + playerBounds.height * 0.08,
+        bottom: playerBounds.bottom - playerBounds.height * 0.3
+      } : null;
       const hidden = new Set();
 
       blades.forEach((blade, index) => {
@@ -89,9 +118,9 @@ function Grass({ blades, playerPosition, mapIndex, moving }) {
           x + halfWidth >= house.left && x - halfWidth <= house.right &&
           topY <= house.bottom && baseY >= house.top
         );
-        const overlapsCharacter = playerBounds &&
-          x + halfWidth >= playerBounds.left && x - halfWidth <= playerBounds.right &&
-          topY <= upperBodyBottom && baseY >= playerBounds.top;
+        const overlapsCharacter = characterBounds &&
+          x + halfWidth >= characterBounds.left && x - halfWidth <= characterBounds.right &&
+          topY <= characterBounds.bottom && baseY >= characterBounds.top;
 
         if (overlapsHouse || overlapsCharacter) hidden.add(index);
       });
@@ -183,7 +212,11 @@ export default function GameWorldScene() {
     const frameSources = [
       "/right_1.png",
       "/right_2.png",
-      ...Array.from({ length: 6 }, (_, index) => `/left_walk_${index + 1}-cutout.png`),
+      "/left_1.png",
+      "/left_2.png",
+      "/left_idle.png",
+      ...FEMALE_RIGHT_WALK_FRAMES,
+      ...FEMALE_LEFT_WALK_FRAMES,
       "/right_idle.png",
       "/idle-cutout.png"
     ];
@@ -195,7 +228,13 @@ export default function GameWorldScene() {
 
   useEffect(() => {
     if (!moving) return undefined;
-    const frameCount = isMale && facing > 0 ? MALE_RIGHT_WALK_FRAMES.length : 6;
+    const frameCount = isMale && facing > 0
+      ? MALE_RIGHT_WALK_FRAMES.length
+      : isMale && facing < 0
+        ? MALE_LEFT_WALK_FRAMES.length
+        : facing > 0
+          ? FEMALE_RIGHT_WALK_FRAMES.length
+          : FEMALE_LEFT_WALK_FRAMES.length;
     setWalkFrame(1);
     const frameTimer = window.setInterval(() => {
       setWalkFrame((frame) => frame % frameCount + 1);
@@ -327,7 +366,8 @@ export default function GameWorldScene() {
         <div className="world-ground" />
         <div className={`world-player ${moving ? "is-walking" : ""}`} style={{ left: `${position}%` }}>
           <img
-            src={moving ? walkFrameSource(facing, walkFrame, isMale) : stopFrameSource(facing)}
+            className={isMale ? "" : "female-character-sprite"}
+            src={moving ? walkFrameSource(facing, walkFrame, isMale) : stopFrameSource(facing, isMale)}
             alt={player.appearance?.gender === "feminine" ? "女性剣士" : "男性剣士"}
           />
         </div>
