@@ -223,7 +223,8 @@ export function GameProvider({ children }) {
           stormIntensity: interpolate("stormIntensity"),
           nightIntensity: interpolate("nightIntensity"),
           typhoonName: options.typhoonName ?? target.typhoonName ?? null,
-          distanceKm: options.distanceKm ?? target.distanceKm ?? null
+          distanceKm: options.distanceKm ?? target.distanceKm ?? null,
+          adminForced: options.adminForced ?? target.adminForced ?? false
         };
         weatherInfoRef.current = nextWeather;
         setWeatherInfo(nextWeather);
@@ -239,7 +240,8 @@ export function GameProvider({ children }) {
       transitionWeather(target, {
         weatherText: target.weatherText,
         typhoonName: message.preset === "sunny" ? null : target.weatherText,
-        distanceKm: message.preset === "sunny" ? null : 0
+        distanceKm: message.preset === "sunny" ? null : 0,
+        adminForced: true
       });
     };
     const transitionToJma = () => {

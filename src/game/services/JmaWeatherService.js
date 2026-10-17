@@ -29,6 +29,7 @@ const FALLBACK_WEATHER = {
   rainIntensity: 0,
   cloudiness: 0.05,
   stormIntensity: 0,
+  nightIntensity: 0,
   typhoonName: null,
   typhoonCategory: null,
   distanceKm: null,
@@ -162,6 +163,11 @@ export class JmaWeatherService {
       ]);
       const localWeather = getForecastWeather(forecast, officeCode) || FALLBACK_WEATHER;
       const storm = getStormConditions(typhoons, prefectureId);
+      const nightIntensity = storm.distanceKm === null || storm.distanceKm > 600
+        ? 0
+        : storm.distanceKm <= 100
+          ? 1
+          : (600 - storm.distanceKm) / 500;
       const weatherInfo = {
         ...FALLBACK_WEATHER,
         ...localWeather,
@@ -169,7 +175,8 @@ export class JmaWeatherService {
         status: "available",
         isRaining: localWeather.isRaining || storm.stormIntensity > 0,
         rainIntensity: Math.max(localWeather.rainIntensity, storm.stormIntensity * 0.55),
-        cloudiness: Math.max(localWeather.cloudiness, storm.stormIntensity * 0.8)
+        cloudiness: Math.max(localWeather.cloudiness, storm.stormIntensity * 0.8),
+        nightIntensity
       };
       return { weatherInfo, proximityInfo: makeProximityInfo(storm) };
     } catch (error) {

@@ -34,10 +34,17 @@ const HOUSE_LAYOUTS = [
   }
 ];
 const MAP_NAMES = ["訓練場", "住宅街", "農場", "商店街"];
-const walkFrameSource = (facing, frame) => facing > 0
-  ? `/right_walk_${frame}-cutout.png`
-  : `/left_walk_${frame}-cutout.png`;
-const stopFrameSource = (facing) => facing > 0 ? "/idle_right-cutout.png" : "/idle-cutout.png";
+const MALE_RIGHT_WALK_FRAMES = [
+  "/right_1.png",
+  "/right_idle.png",
+  "/right_2.png",
+  "/right_idle.png"
+];
+const walkFrameSource = (facing, frame, isMale) => {
+  if (facing > 0 && isMale) return MALE_RIGHT_WALK_FRAMES[(frame - 1) % MALE_RIGHT_WALK_FRAMES.length];
+  return facing > 0 ? `/right_walk_${frame}-cutout.png` : `/left_walk_${frame}-cutout.png`;
+};
+const stopFrameSource = (facing) => facing > 0 ? "/right_idle.png" : "/idle-cutout.png";
 
 const grassRandom = (seed) => {
   const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
@@ -154,6 +161,7 @@ function Grass({ blades, playerPosition, mapIndex, moving }) {
 
 export default function GameWorldScene() {
   const { player, proximityInfo, weatherInfo } = useGame();
+  const isMale = player.appearance?.gender !== "feminine";
   const [position, setPosition] = useState(48);
   const [moving, setMoving] = useState(false);
   const [facing, setFacing] = useState(1);
@@ -173,9 +181,10 @@ export default function GameWorldScene() {
 
   useEffect(() => {
     const frameSources = [
-      ...Array.from({ length: 6 }, (_, index) => `/right_walk_${index + 1}-cutout.png`),
+      "/right_1.png",
+      "/right_2.png",
       ...Array.from({ length: 6 }, (_, index) => `/left_walk_${index + 1}-cutout.png`),
-      "/idle_right-cutout.png",
+      "/right_idle.png",
       "/idle-cutout.png"
     ];
     frameSources.forEach((src) => {
@@ -186,12 +195,13 @@ export default function GameWorldScene() {
 
   useEffect(() => {
     if (!moving) return undefined;
+    const frameCount = isMale && facing > 0 ? MALE_RIGHT_WALK_FRAMES.length : 6;
     setWalkFrame(1);
     const frameTimer = window.setInterval(() => {
-      setWalkFrame((frame) => frame % 6 + 1);
+      setWalkFrame((frame) => frame % frameCount + 1);
     }, fastWalking ? 220 : 300);
     return () => window.clearInterval(frameTimer);
-  }, [moving, fastWalking, facing]);
+  }, [moving, fastWalking, facing, isMale]);
 
   const moveMap = (direction) => {
     const nextMap = mapIndexRef.current + direction;
@@ -297,7 +307,7 @@ export default function GameWorldScene() {
 
   const approach = Math.max(0, Math.min(1, weatherInfo.stormIntensity || 0));
   const nightIntensity = Math.max(0, Math.min(1, weatherInfo.nightIntensity ?? approach));
-  const skyDarkness = Math.max(nightIntensity, approach, (weatherInfo.cloudiness || 0) * 0.28);
+  const skyDarkness = Math.max(nightIntensity, (weatherInfo.cloudiness || 0) * 0.28);
   const celestialFade = Math.max(nightIntensity, (weatherInfo.cloudiness || 0) * 0.8);
   const isStrike = proximityInfo.alertPhase === "strike";
   const houses = HOUSE_LAYOUTS[mapIndex];
@@ -317,7 +327,7 @@ export default function GameWorldScene() {
         <div className="world-ground" />
         <div className={`world-player ${moving ? "is-walking" : ""}`} style={{ left: `${position}%` }}>
           <img
-            src={moving ? walkFrameSource(facing, walkFrame) : stopFrameSource(facing)}
+            src={moving ? walkFrameSource(facing, walkFrame, isMale) : stopFrameSource(facing)}
             alt={player.appearance?.gender === "feminine" ? "女性剣士" : "男性剣士"}
           />
         </div>
