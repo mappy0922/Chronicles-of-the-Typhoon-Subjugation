@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { GameProvider, useGame } from "./game/context/GameContext";
 import Navbar from "./components/Navbar";
 import TyphoonAlertBanner from "./components/TyphoonAlertBanner";
@@ -21,6 +21,7 @@ import AudioControls from "./components/AudioControls";
 import PauseMenu from "./components/PauseMenu";
 import GameWorldScene from "./components/GameWorldScene";
 import AdminPage from "./views/AdminPage";
+import { SoundManager } from "./game/services/SoundManager";
 
 import "./styles/index.css";
 import "./styles/title-screen.css";
@@ -78,6 +79,16 @@ function GameApp() {
 }
 
 export default function App() {
+  useEffect(() => {
+    const playButtonClick = (event) => {
+      const target = event.target instanceof Element ? event.target.closest("button, [role='button']") : null;
+      if (!target || target.disabled || target.getAttribute("aria-disabled") === "true") return;
+      SoundManager.playClick();
+    };
+    document.addEventListener("click", playButtonClick);
+    return () => document.removeEventListener("click", playButtonClick);
+  }, []);
+
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
   if (path === "/admin") return <AdminPage />;
   if (path === "/") window.history.replaceState({}, "", "/game");

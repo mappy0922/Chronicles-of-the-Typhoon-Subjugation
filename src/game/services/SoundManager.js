@@ -14,6 +14,7 @@ class SoundManagerClass {
     this.rainIntensity = 0;
     this.rainPlaybackAllowed = false;
     this.rainFadeTimer = null;
+    this.lastClickAt = 0;
   }
 
   loadVolumes() {
@@ -77,7 +78,7 @@ class SoundManagerClass {
   startRain() {
     if (typeof Audio === "undefined") return;
     if (!this.ambientAudio) {
-      this.ambientAudio = new Audio("/soft_natural_rain.wav");
+      this.ambientAudio = new Audio("/soft_natural_rain_loop.wav");
       this.ambientAudio.loop = true;
       this.ambientAudio.preload = "auto";
       this.ambientAudio.volume = 1;
@@ -143,19 +144,44 @@ class SoundManagerClass {
 
   // クリック・UI音
   playClick() {
+    const now = Date.now();
+    if (now - this.lastClickAt < 60) return;
+    this.lastClickAt = now;
     this.init();
     if (!this.ctx || this.volumes.se === 0 || this.volumes.master === 0) return;
-    const osc = this.ctx.createOscillator();
-    const gain = this.ctx.createGain();
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(600, this.ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(1200, this.ctx.currentTime + 0.05);
-    gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
-    osc.connect(gain);
-    gain.connect(this.channelGains.se);
-    osc.start();
-    osc.stop(this.ctx.currentTime + 0.05);
+    const startAt = this.ctx.currentTime;
+    const noiseDuration = 0.012;
+    const noiseBuffer = this.ctx.createBuffer(1, Math.ceil(this.ctx.sampleRate * noiseDuration), this.ctx.sampleRate);
+    const noiseData = noiseBuffer.getChannelData(0);
+    for (let index = 0; index < noiseData.length; index += 1) {
+      noiseData[index] = (Math.random() * 2 - 1) * (1 - index / noiseData.length);
+    }
+
+    const noise = this.ctx.createBufferSource();
+    const highPass = this.ctx.createBiquadFilter();
+    const noiseGain = this.ctx.createGain();
+    noise.buffer = noiseBuffer;
+    highPass.type = "highpass";
+    highPass.frequency.setValueAtTime(1500, startAt);
+    noiseGain.gain.setValueAtTime(0.12, startAt);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, startAt + noiseDuration);
+    noise.connect(highPass);
+    highPass.connect(noiseGain);
+    noiseGain.connect(this.channelGains.se);
+    noise.start(startAt);
+    noise.stop(startAt + noiseDuration);
+
+    const thock = this.ctx.createOscillator();
+    const thockGain = this.ctx.createGain();
+    thock.type = "triangle";
+    thock.frequency.setValueAtTime(950, startAt);
+    thock.frequency.exponentialRampToValueAtTime(280, startAt + 0.028);
+    thockGain.gain.setValueAtTime(0.07, startAt);
+    thockGain.gain.exponentialRampToValueAtTime(0.001, startAt + 0.028);
+    thock.connect(thockGain);
+    thockGain.connect(this.channelGains.se);
+    thock.start(startAt);
+    thock.stop(startAt + 0.028);
   }
 
   // 剣攻撃音

@@ -9,6 +9,7 @@
 }
 .world-map-content { position:absolute; inset:0; opacity:0; transition:opacity .4s ease; }
 .world-map-content.is-visible { opacity:1; }
+.is-typhoon-transition .world-map-content { transition-duration:1.2s; }
 .world-sky { position: absolute; inset: 0; z-index: 0; background: linear-gradient(#73d4f2 0%, #b9f1fb 72%); transition: filter 6s ease; filter: brightness(calc(1 - var(--storm-darkness))); }
 .world-night-shade { position:absolute; z-index:1; inset:0; pointer-events:none; background:#080d19; opacity:var(--night-opacity); transition:opacity 6s ease; }
 .game-world::after { content:""; position:absolute; z-index:2; inset:0; pointer-events:none; background-image:linear-gradient(rgba(255,255,255,.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.02) 1px,transparent 1px); background-size:48px 48px; }
@@ -26,10 +27,27 @@
 .world-player img.female-character-sprite { height:clamp(115px,24.15vh,218px)!important; }
 .map-loading-indicator { position:absolute; z-index:10; right:1.25rem; bottom:1.1rem; color:white; font-weight:700; letter-spacing:.06em; text-shadow:0 1px 4px rgba(0,0,0,.8); }
 .map-loading-indicator.is-fading { animation:loading-fade-out .4s ease forwards; }
+.is-typhoon-transition .map-loading-indicator.is-fading { animation-duration:1.2s; }
+.map-transition-curtain { position:absolute; z-index:9; inset:0; background:#050914; }
+.map-transition-curtain.is-fading-out { animation:transition-curtain-in .4s ease forwards; }
+.is-typhoon-transition .map-transition-curtain.is-fading-out { animation-duration:1.2s; }
 .map-name-indicator { position:absolute; z-index:11; top:1.6rem; left:50%; transform:translateX(-50%); color:white; font-size:clamp(1.1rem,2.2vw,1.7rem); font-weight:800; letter-spacing:.12em; text-shadow:0 2px 8px rgba(0,0,0,.65); white-space:nowrap; pointer-events:none; animation:map-name-appear 2.8s ease both; }
+.is-battle-active .world-player { visibility:hidden; }
+.strike-encounter { position:absolute; z-index:12; inset:0; pointer-events:none; }
+.strike-player-position, .typhoon-strike-arrival { position:absolute; bottom:20%; width:clamp(120px,18vw,220px); height:clamp(100px,21vh,190px); display:flex; justify-content:center; align-items:flex-end; }
+.strike-player-position { left:24%; transform:translateX(-50%); }
+.strike-player-position img { display:block; width:auto; height:100%; max-width:100%; object-fit:contain; filter:drop-shadow(0 5px 3px rgba(0,0,0,.3)); }
+.typhoon-strike-arrival { right:-8%; width:clamp(320px,62vw,760px); height:clamp(280px,68vh,660px); animation:typhoon-strike-enter 8s cubic-bezier(.18,.7,.28,1) both; }
+.typhoon-strike-character { display:block; width:auto; height:100%; max-width:100%; object-fit:contain; filter:drop-shadow(0 8px 14px rgba(0,0,0,.38)); }
+.boss-health-gauge { position:absolute; z-index:2; top:-42px; left:50%; translate:-50% 0; box-sizing:border-box; width:clamp(150px,22vw,280px); height:22px; padding:3px; overflow:hidden; border:2px solid #7dd3fc; border-radius:999px; background:rgba(8,34,54,.94); box-shadow:0 0 12px rgba(56,189,248,.7),0 2px 12px rgba(0,0,0,.65); }
+.boss-health-gauge-fill { width:100%; height:100%; transform:scaleX(0); transform-origin:left center; border-radius:inherit; animation:boss-health-fill 2s linear forwards,boss-health-color 2s steps(1,end) forwards; }
 .is-strike .world-ground { filter:brightness(.35) saturate(.7); }
 .is-strike .world-grass-foreground { filter:brightness(.35) saturate(.7); }
 @keyframes loading-fade-out { from { opacity:1; } to { opacity:0; } }
+@keyframes transition-curtain-in { from { opacity:0; } to { opacity:1; } }
 @keyframes map-name-appear { 0% { opacity:0; translate:0 -8px; } 14% { opacity:1; translate:0 0; } 72% { opacity:1; translate:0 0; } 100% { opacity:0; translate:0 -4px; } }
+@keyframes typhoon-strike-enter { from { opacity:0; translate:0 -150px; } to { opacity:1; translate:0 0; } }
+@keyframes boss-health-fill { from { transform:scaleX(0); } to { transform:scaleX(1); } }
+@keyframes boss-health-color { 0%,10% { background-color:#ef4444; } 10.001%,50% { background-color:#facc15; } 50.001%,100% { background-color:#a3e635; } }
 @media(max-width:650px) { .world-player img { height:125px!important; } .world-player img.female-character-sprite { height:144px!important; } .world-house { max-height:24vh; } }
 

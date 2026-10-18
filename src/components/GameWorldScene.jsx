@@ -1,7 +1,16 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "../game/context/GameContext";
 import StormCanvas from "./StormCanvas";
+import CharacterCutout from "./CharacterCutout";
 import "../styles/game-world.css";
+
+const getTyphoonCharacter = (intensity) => {
+  if (intensity <= 0.2) return ["/そよ風型_left.png", "そよ風型"];
+  if (intensity <= 0.5) return ["/豪雨型_left.png", "豪雨型"];
+  if (intensity <= 0.84) return ["/暴風型_left.jpg", "暴風型"];
+  if (intensity <= 0.94) return ["/嵐型_left.jpg", "嵐型"];
+  return ["/超大型型_left.png", "超大型型"];
+};
 
 const HOUSE_LAYOUTS = [
   {
@@ -198,10 +207,18 @@ export default function GameWorldScene() {
   const [walkFrame, setWalkFrame] = useState(1);
   const [mapIndex, setMapIndex] = useState(1);
   const [mapTransition, setMapTransition] = useState("idle");
+  const [isTyphoonTransition, setIsTyphoonTransition] = useState(false);
   const [mapLabelKey, setMapLabelKey] = useState(0);
+  const [typhoonAppearance, setTyphoonAppearance] = useState(null);
+  const [showBossGauge, setShowBossGauge] = useState(false);
+  const [adminStrike, setAdminStrike] = useState(false);
+  const [battleActive, setBattleActive] = useState(false);
   const mapIndexRef = useRef(1);
   const positionRef = useRef(48);
   const transitionRef = useRef("idle");
+  const strikeActiveRef = useRef(false);
+  const movementLockedRef = useRef(false);
+  const nightIntensityRef = useRef(0);
   const transitionTimers = useRef([]);
   const movementInterval = useRef(null);
   const shiftHeld = useRef(false);
@@ -242,15 +259,18 @@ export default function GameWorldScene() {
     return () => window.clearInterval(frameTimer);
   }, [moving, fastWalking, facing, isMale]);
 
-  const moveMap = (direction) => {
-    const nextMap = mapIndexRef.current + direction;
+  const startMapTransition = (nextMap, entryPosition, onFadeIn, { typhoon = false } = {}) => {
     if (transitionRef.current !== "idle" || nextMap < 0 || nextMap >= HOUSE_LAYOUTS.length) return;
+    const fadeDuration = typhoon ? 1200 : 400;
+    const loadingDuration = typhoon ? 1200 : 450;
+    setIsTyphoonTransition(typhoon);
+    setTyphoonAppearance(null);
+    setShowBossGauge(false);
     transitionRef.current = "fade-out";
     setMapTransition("fade-out");
     transitionTimers.current.push(window.setTimeout(() => {
       mapIndexRef.current = nextMap;
       setMapIndex(nextMap);
-      const entryPosition = direction > 0 ? 3 : 97;
       positionRef.current = entryPosition;
       setPosition(entryPosition);
       transitionRef.current = "loading";
@@ -259,12 +279,18 @@ export default function GameWorldScene() {
         transitionRef.current = "fade-in";
         setMapTransition("fade-in");
         setMapLabelKey((key) => key + 1);
+        onFadeIn?.();
         transitionTimers.current.push(window.setTimeout(() => {
           transitionRef.current = "idle";
           setMapTransition("idle");
-        }, 400));
-      }, 450));
-    }, 400));
+          setIsTyphoonTransition(false);
+        }, fadeDuration));
+      }, loadingDuration));
+    }, fadeDuration));
+  };
+
+  const moveMap = (direction) => {
+    startMapTransition(mapIndexRef.current + direction, direction > 0 ? 3 : 97);
   };
 
   useEffect(() => {
@@ -277,7 +303,7 @@ export default function GameWorldScene() {
     };
 
     const moveOneStep = (direction) => {
-      if (transitionRef.current !== "idle") {
+      if (movementLockedRef.current || transitionRef.current !== "idle") {
         stopMovement();
         return;
       }
@@ -304,6 +330,7 @@ export default function GameWorldScene() {
       if (event.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
       if (event.key.toLowerCase() !== "a" && event.key.toLowerCase() !== "d") return;
       event.preventDefault();
+      if (movementLockedRef.current) return;
       shiftHeld.current = event.shiftKey;
       if (event.repeat || transitionRef.current !== "idle") return;
       const direction = event.key.toLowerCase() === "d" ? 1 : -1;
@@ -346,15 +373,60 @@ export default function GameWorldScene() {
 
   const approach = Math.max(0, Math.min(1, weatherInfo.stormIntensity || 0));
   const nightIntensity = Math.max(0, Math.min(1, weatherInfo.nightIntensity ?? approach));
+  nightIntensityRef.current = nightIntensity;
   const skyDarkness = Math.max(nightIntensity, (weatherInfo.cloudiness || 0) * 0.28);
   const celestialFade = Math.max(nightIntensity, (weatherInfo.cloudiness || 0) * 0.8);
-  const isStrike = proximityInfo.alertPhase === "strike";
+  useEffect(() => {
+    setAdminStrike(false);
+    if (!weatherInfo.adminForced || approach <= 0) return undefined;
+
+    let strikeTimer;
+    const nightWatcher = window.setInterval(() => {
+      if (nightIntensityRef.current < 0.99) return;
+      window.clearInterval(nightWatcher);
+      strikeTimer = window.setTimeout(() => setAdminStrike(true), 10_000);
+    }, 100);
+    return () => {
+      window.clearInterval(nightWatcher);
+      if (strikeTimer) window.clearTimeout(strikeTimer);
+    };
+  }, [weatherInfo.adminForced, weatherInfo.weatherText]);
+  const isStrike = weatherInfo.adminForced ? adminStrike : proximityInfo.alertPhase === "strike";
+  useEffect(() => {
+    if (!isStrike) {
+      strikeActiveRef.current = false;
+      movementLockedRef.current = false;
+      setBattleActive(false);
+      setTyphoonAppearance(null);
+      setShowBossGauge(false);
+      return;
+    }
+    if (strikeActiveRef.current) return;
+    strikeActiveRef.current = true;
+    movementLockedRef.current = true;
+    setBattleActive(true);
+    if (movementInterval.current) {
+      window.clearInterval(movementInterval.current);
+      movementInterval.current = null;
+    }
+    setMoving(false);
+    const enterResidentialMap = () => {
+      if (!strikeActiveRef.current) return;
+      if (transitionRef.current !== "idle") {
+        transitionTimers.current.push(window.setTimeout(enterResidentialMap, 100));
+        return;
+      }
+      const [src, name] = getTyphoonCharacter(approach);
+      startMapTransition(1, 48, () => setTyphoonAppearance({ src, name }), { typhoon: true });
+    };
+    enterResidentialMap();
+  }, [isStrike]);
   const houses = HOUSE_LAYOUTS[mapIndex];
   const isMapVisible = mapTransition === "idle" || mapTransition === "fade-in";
-  const isMapNameVisible = mapTransition === "idle" || mapTransition === "fade-in";
+  const isMapNameVisible = (mapTransition === "idle" || mapTransition === "fade-in") && !battleActive;
 
   return (
-    <section className={`game-world ${isStrike ? "is-strike" : ""}`} style={{ "--storm-darkness": skyDarkness, "--night-opacity": nightIntensity, "--celestial-opacity": 1 - celestialFade }} aria-label="草原のゲームフィールド">
+    <section className={`game-world ${isStrike ? "is-strike" : ""} ${battleActive ? "is-battle-active" : ""} ${isTyphoonTransition ? "is-typhoon-transition" : ""}`} style={{ "--storm-darkness": skyDarkness, "--night-opacity": nightIntensity, "--celestial-opacity": 1 - celestialFade }} aria-label="草原のゲームフィールド">
       <div className={`world-map-content ${isMapVisible ? "is-visible" : ""}`}>
         <div className="world-sky" />
         <div className="world-night-shade" />
@@ -376,6 +448,25 @@ export default function GameWorldScene() {
       </div>
       {isMapNameVisible && <div key={mapLabelKey} className="map-name-indicator" aria-live="polite">{MAP_NAMES[mapIndex]}</div>}
       {(mapTransition === "loading" || mapTransition === "fade-in") && <div className={`map-loading-indicator ${mapTransition === "fade-in" ? "is-fading" : ""}`}>ロード中...</div>}
+      {(mapTransition === "fade-out" || mapTransition === "loading") && <div className={`map-transition-curtain ${mapTransition === "fade-out" ? "is-fading-out" : ""}`} aria-hidden="true" />}
+      {battleActive && typhoonAppearance && <div className="strike-encounter" aria-label="主人公と台風の対峙">
+        <div className="strike-player-position">
+          <img src={isMale ? "/player-male-normalized.png" : "/player-female-normalized.png"} alt={isMale ? "男性剣士" : "女性剣士"} />
+        </div>
+        <div
+          key={typhoonAppearance.src}
+          className="typhoon-strike-arrival"
+          aria-label={`${typhoonAppearance.name}が直撃`}
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget && event.animationName === "typhoon-strike-enter") setShowBossGauge(true);
+          }}
+        >
+          <CharacterCutout src={typhoonAppearance.src} alt={typhoonAppearance.name} className="typhoon-strike-character" />
+          {showBossGauge && <div className="boss-health-gauge" role="img" aria-label="ボスゲージ 0から100まで増加">
+            <div className="boss-health-gauge-fill" aria-hidden="true" />
+          </div>}
+        </div>
+      </div>}
     </section>
   );
 }
