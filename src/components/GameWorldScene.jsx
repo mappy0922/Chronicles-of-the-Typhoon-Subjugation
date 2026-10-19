@@ -1,15 +1,14 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "../game/context/GameContext";
 import StormCanvas from "./StormCanvas";
-import CharacterCutout from "./CharacterCutout";
 import "../styles/game-world.css";
 
 const getTyphoonCharacter = (intensity) => {
-  if (intensity <= 0.2) return ["/そよ風型_left.png", "そよ風型"];
-  if (intensity <= 0.5) return ["/豪雨型_left.png", "豪雨型"];
-  if (intensity <= 0.84) return ["/暴風型_left.jpg", "暴風型"];
-  if (intensity <= 0.94) return ["/嵐型_left.jpg", "嵐型"];
-  return ["/超大型型_left.png", "超大型型"];
+  if (intensity <= 0.2) return ["/typhoon-breeze-cutout.png", "Breeze Typhoon"];
+  if (intensity <= 0.5) return ["/typhoon-rain-cutout.png", "Heavy Rain Typhoon"];
+  if (intensity <= 0.84) return ["/typhoon-gale-cutout.png", "Gale Typhoon"];
+  if (intensity <= 0.94) return ["/typhoon-storm-cutout.png", "Storm Typhoon"];
+  return ["/typhoon-super-cutout.png", "Super Typhoon"];
 };
 
 const HOUSE_LAYOUTS = [
@@ -211,6 +210,9 @@ export default function GameWorldScene() {
   const [mapLabelKey, setMapLabelKey] = useState(0);
   const [typhoonAppearance, setTyphoonAppearance] = useState(null);
   const [showBossGauge, setShowBossGauge] = useState(false);
+  const [bossGaugeCharge, setBossGaugeCharge] = useState(0);
+  const [bossGaugeDamage, setBossGaugeDamage] = useState(0);
+  const [bossGaugeCharging, setBossGaugeCharging] = useState(false);
   const [adminStrike, setAdminStrike] = useState(false);
   const [battleActive, setBattleActive] = useState(false);
   const mapIndexRef = useRef(1);
@@ -222,6 +224,8 @@ export default function GameWorldScene() {
   const transitionTimers = useRef([]);
   const movementInterval = useRef(null);
   const shiftHeld = useRef(false);
+  const showBossGaugeRef = useRef(false);
+  showBossGaugeRef.current = showBossGauge;
   positionRef.current = position;
   const grass = useMemo(() => makeGrass(1200), []);
 
@@ -266,6 +270,10 @@ export default function GameWorldScene() {
     setIsTyphoonTransition(typhoon);
     setTyphoonAppearance(null);
     setShowBossGauge(false);
+    showBossGaugeRef.current = false;
+    setBossGaugeCharge(0);
+    setBossGaugeDamage(0);
+    setBossGaugeCharging(false);
     transitionRef.current = "fade-out";
     setMapTransition("fade-out");
     transitionTimers.current.push(window.setTimeout(() => {
@@ -292,6 +300,25 @@ export default function GameWorldScene() {
   const moveMap = (direction) => {
     startMapTransition(mapIndexRef.current + direction, direction > 0 ? 3 : 97);
   };
+
+  useEffect(() => {
+    if (!bossGaugeCharging) return undefined;
+    let frameId;
+    let startedAt;
+    let lastUpdate = 0;
+    const chargeGauge = (timestamp) => {
+      if (startedAt === undefined) startedAt = timestamp;
+      const charge = Math.min(100, ((timestamp - startedAt) / 2000) * 100);
+      if (timestamp - lastUpdate >= 33 || charge === 100) {
+        setBossGaugeCharge(charge);
+        lastUpdate = timestamp;
+      }
+      if (charge < 100) frameId = window.requestAnimationFrame(chargeGauge);
+      else setBossGaugeCharging(false);
+    };
+    frameId = window.requestAnimationFrame(chargeGauge);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [bossGaugeCharging]);
 
   useEffect(() => {
     const stopMovement = () => {
@@ -330,7 +357,12 @@ export default function GameWorldScene() {
       if (event.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
       if (event.key.toLowerCase() !== "a" && event.key.toLowerCase() !== "d") return;
       event.preventDefault();
-      if (movementLockedRef.current) return;
+      if (movementLockedRef.current) {
+        if (event.key.toLowerCase() === "d" && !event.repeat && showBossGaugeRef.current) {
+          setBossGaugeDamage((damage) => Math.min(100, damage + 10));
+        }
+        return;
+      }
       shiftHeld.current = event.shiftKey;
       if (event.repeat || transitionRef.current !== "idle") return;
       const direction = event.key.toLowerCase() === "d" ? 1 : -1;
@@ -399,6 +431,10 @@ export default function GameWorldScene() {
       setBattleActive(false);
       setTyphoonAppearance(null);
       setShowBossGauge(false);
+      showBossGaugeRef.current = false;
+      setBossGaugeCharge(0);
+      setBossGaugeDamage(0);
+      setBossGaugeCharging(false);
       return;
     }
     if (strikeActiveRef.current) return;
@@ -424,6 +460,7 @@ export default function GameWorldScene() {
   const houses = HOUSE_LAYOUTS[mapIndex];
   const isMapVisible = mapTransition === "idle" || mapTransition === "fade-in";
   const isMapNameVisible = (mapTransition === "idle" || mapTransition === "fade-in") && !battleActive;
+  const bossGaugeProgress = Math.max(0, bossGaugeCharge - bossGaugeDamage);
 
   return (
     <section className={`game-world ${isStrike ? "is-strike" : ""} ${battleActive ? "is-battle-active" : ""} ${isTyphoonTransition ? "is-typhoon-transition" : ""}`} style={{ "--storm-darkness": skyDarkness, "--night-opacity": nightIntensity, "--celestial-opacity": 1 - celestialFade }} aria-label="草原のゲームフィールド">
@@ -456,15 +493,28 @@ export default function GameWorldScene() {
         <div
           key={typhoonAppearance.src}
           className="typhoon-strike-arrival"
-          aria-label={`${typhoonAppearance.name}が直撃`}
+          aria-label={`${typhoonAppearance.name}。Dキーで10%ダメージ`}
           onAnimationEnd={(event) => {
-            if (event.target === event.currentTarget && event.animationName === "typhoon-strike-enter") setShowBossGauge(true);
+            if (event.target === event.currentTarget && event.animationName === "typhoon-strike-enter") {
+              setBossGaugeCharge(0);
+              setBossGaugeDamage(0);
+              showBossGaugeRef.current = true;
+              setBossGaugeCharging(true);
+              setShowBossGauge(true);
+            }
           }}
         >
-          <CharacterCutout src={typhoonAppearance.src} alt={typhoonAppearance.name} className="typhoon-strike-character" />
-          {showBossGauge && <div className="boss-health-gauge" role="img" aria-label="ボスゲージ 0から100まで増加">
-            <div className="boss-health-gauge-fill" aria-hidden="true" />
-          </div>}
+          <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className="typhoon-strike-character" />
+          {showBossGauge && <span className="boss-health-gauge" role="progressbar" aria-label="ボスゲージ" aria-valuemin={0} aria-valuemax={100} aria-valuenow={bossGaugeProgress}>
+            <span
+              className="boss-health-gauge-fill"
+              aria-hidden="true"
+              style={{
+                width: `${bossGaugeProgress}%`,
+                backgroundColor: bossGaugeProgress <= 10 ? "#ef4444" : bossGaugeProgress <= 50 ? "#facc15" : "#a3e635"
+              }}
+            />
+          </span>}
         </div>
       </div>}
     </section>

@@ -6,7 +6,9 @@ export default function AudioControls() {
   const { isInTitleScreen, isInIntroSequence, isInCharacterCreation, weatherInfo } = useGame();
 
   useEffect(() => {
-    const startAmbient = () => SoundManager.startRain();
+    // Retry playback directly inside a user gesture. An autoplay request made
+    // during mount can still be pending when the first gesture arrives.
+    const startAmbient = () => SoundManager.startRain({ fromUserGesture: true });
     window.addEventListener("pointerdown", startAmbient, { once: true });
     window.addEventListener("keydown", startAmbient, { once: true });
     return () => {
@@ -16,6 +18,7 @@ export default function AudioControls() {
   }, []);
 
   useEffect(() => {
+    SoundManager.setGameAudioActive(!isInTitleScreen && !isInIntroSequence && !isInCharacterCreation);
     if (isInIntroSequence || isInCharacterCreation) {
       SoundManager.stopRain();
       return;

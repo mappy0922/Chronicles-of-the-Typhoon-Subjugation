@@ -5,8 +5,6 @@ class SoundManagerClass {
   constructor() {
     this.ctx = null;
     this.ambientAudio = null;
-    this.rainSource = null;
-    this.rainGain = null;
     this.channelGains = {};
     this.masterGain = null;
     this.rainLevel = 0;
@@ -14,6 +12,8 @@ class SoundManagerClass {
     this.rainIntensity = 0;
     this.rainPlaybackAllowed = false;
     this.rainFadeTimer = null;
+    this.gameAudioActive = false;
+    this.defaultVolumes = { bgm: 100, se: 100, voice: 100, ambient: 100, master: 100 };
     this.lastClickAt = 0;
   }
 
@@ -34,6 +34,16 @@ class SoundManagerClass {
     return { ...this.volumes };
   }
 
+  getEffectiveVolumes() {
+    return this.gameAudioActive ? this.volumes : this.defaultVolumes;
+  }
+
+  setGameAudioActive(active) {
+    this.gameAudioActive = Boolean(active);
+    this.applyVolumes();
+    this.syncRainPlayback();
+  }
+
   setVolume(channel, value) {
     if (!(channel in this.volumes)) return;
     this.volumes[channel] = Math.max(0, Math.min(100, Number(value) || 0));
@@ -49,10 +59,11 @@ class SoundManagerClass {
 
   applyVolumes() {
     if (!this.ctx) return;
+    const volumes = this.getEffectiveVolumes();
     const now = this.ctx.currentTime;
-    if (this.masterGain) this.masterGain.gain.setTargetAtTime(this.volumes.master / 100, now, 0.025);
+    if (this.masterGain) this.masterGain.gain.setTargetAtTime(volumes.master / 100, now, 0.025);
     for (const [key, node] of Object.entries(this.channelGains)) {
-      node.gain.setTargetAtTime(this.volumes[key] / 100, now, 0.025);
+      node.gain.setTargetAtTime(volumes[key] / 100, now, 0.025);
     }
   }
 
@@ -75,28 +86,16 @@ class SoundManagerClass {
     }
   }
 
-  startRain() {
+  startRain({ fromUserGesture = false } = {}) {
     if (typeof Audio === "undefined") return;
     if (!this.ambientAudio) {
       this.ambientAudio = new Audio("/soft_natural_rain_loop.wav");
       this.ambientAudio.loop = true;
       this.ambientAudio.preload = "auto";
-      this.ambientAudio.volume = 1;
+      this.ambientAudio.volume = 0;
     }
     this.init();
-    if (this.ctx && !this.rainSource) {
-      try {
-        this.rainSource = this.ctx.createMediaElementSource(this.ambientAudio);
-        this.rainGain = this.ctx.createGain();
-        this.rainSource.connect(this.rainGain);
-        this.rainGain.connect(this.channelGains.ambient);
-        this.rainGain.gain.value = this.rainLevel;
-      } catch {
-        this.rainSource = null;
-        this.rainGain = null;
-      }
-    }
-    this.syncRainPlayback();
+    this.syncRainPlayback(fromUserGesture);
   }
 
   setRainIntensity(intensity) {
@@ -110,13 +109,13 @@ class SoundManagerClass {
     this.rainPlaybackAllowed = false;
     this.rainLevel = 0;
     if (!this.ambientAudio) return;
-    if (this.rainGain) this.rainGain.gain.value = 0;
-    else this.ambientAudio.volume = 0;
+    this.ambientAudio.volume = 0;
     this.ambientAudio.pause();
   }
 
-  syncRainPlayback() {
+  syncRainPlayback(fromUserGesture = false) {
     if (!this.ambientAudio) return;
+    const volumes = this.getEffectiveVolumes();
     if (this.rainFadeTimer === null) {
       this.rainFadeTimer = window.setInterval(() => {
         if (!this.ambientAudio) return;
@@ -124,21 +123,22 @@ class SoundManagerClass {
         const difference = targetVolume - this.rainLevel;
         if (Math.abs(difference) < 0.003) {
           this.rainLevel = targetVolume;
-          if (this.rainGain) this.rainGain.gain.value = targetVolume;
-          else this.ambientAudio.volume = targetVolume * this.volumes.ambient / 100 * this.volumes.master / 100;
+          this.ambientAudio.volume = targetVolume * volumes.ambient / 100 * volumes.master / 100;
           if (targetVolume === 0) this.ambientAudio.pause();
           return;
         }
         this.rainLevel += difference * 0.12;
-        if (this.rainGain) this.rainGain.gain.value = this.rainLevel;
-        else this.ambientAudio.volume = this.rainLevel * this.volumes.ambient / 100 * this.volumes.master / 100;
+        this.ambientAudio.volume = this.rainLevel * volumes.ambient / 100 * volumes.master / 100;
       }, 50);
     }
-    if (this.rainPlaybackAllowed && this.rainIntensity > 0 && this.volumes.ambient > 0 && this.volumes.master > 0 && this.ambientAudio.paused) {
+    if (this.rainPlaybackAllowed && this.rainIntensity > 0 && volumes.ambient > 0 && volumes.master > 0 && (fromUserGesture || this.ambientAudio.paused)) {
       const audio = this.ambientAudio;
       audio.play().then(() => {
         if (!this.rainPlaybackAllowed || this.rainIntensity === 0) audio.pause();
-      }).catch(() => {});
+      }).catch((error) => {
+        // A blocked autoplay attempt is retried on the next user gesture.
+        if (error?.name !== "NotAllowedError") console.warn("Rain audio could not start:", error);
+      });
     }
   }
 
@@ -148,7 +148,8 @@ class SoundManagerClass {
     if (now - this.lastClickAt < 60) return;
     this.lastClickAt = now;
     this.init();
-    if (!this.ctx || this.volumes.se === 0 || this.volumes.master === 0) return;
+    const volumes = this.getEffectiveVolumes();
+    if (!this.ctx || volumes.se === 0 || volumes.master === 0) return;
     const startAt = this.ctx.currentTime;
     const noiseDuration = 0.012;
     const noiseBuffer = this.ctx.createBuffer(1, Math.ceil(this.ctx.sampleRate * noiseDuration), this.ctx.sampleRate);
@@ -187,7 +188,8 @@ class SoundManagerClass {
   // 剣攻撃音
   playSlash() {
     this.init();
-    if (!this.ctx || this.volumes.se === 0 || this.volumes.master === 0) return;
+    const volumes = this.getEffectiveVolumes();
+    if (!this.ctx || volumes.se === 0 || volumes.master === 0) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = "sawtooth";
@@ -204,7 +206,8 @@ class SoundManagerClass {
   // 弓矢発射音
   playBow() {
     this.init();
-    if (!this.ctx || this.volumes.se === 0 || this.volumes.master === 0) return;
+    const volumes = this.getEffectiveVolumes();
+    if (!this.ctx || volumes.se === 0 || volumes.master === 0) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = "triangle";
@@ -221,7 +224,8 @@ class SoundManagerClass {
   // 盾ガード音
   playShield() {
     this.init();
-    if (!this.ctx || this.volumes.se === 0 || this.volumes.master === 0) return;
+    const volumes = this.getEffectiveVolumes();
+    if (!this.ctx || volumes.se === 0 || volumes.master === 0) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = "square";
@@ -238,7 +242,8 @@ class SoundManagerClass {
   // 警報サイレン（台風接近時）
   playAlert() {
     this.init();
-    if (!this.ctx || this.volumes.se === 0 || this.volumes.master === 0) return;
+    const volumes = this.getEffectiveVolumes();
+    if (!this.ctx || volumes.se === 0 || volumes.master === 0) return;
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
     osc.type = "sawtooth";
@@ -256,7 +261,8 @@ class SoundManagerClass {
   // 勝利ファンファーレ
   playVictory() {
     this.init();
-    if (!this.ctx || this.volumes.se === 0 || this.volumes.master === 0) return;
+    const volumes = this.getEffectiveVolumes();
+    if (!this.ctx || volumes.se === 0 || volumes.master === 0) return;
     const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
     notes.forEach((freq, idx) => {
       const osc = this.ctx.createOscillator();
@@ -275,7 +281,8 @@ class SoundManagerClass {
   // 収穫音
   playHarvest() {
     this.init();
-    if (!this.ctx || this.volumes.se === 0 || this.volumes.master === 0) return;
+    const volumes = this.getEffectiveVolumes();
+    if (!this.ctx || volumes.se === 0 || volumes.master === 0) return;
     const notes = [440, 554.37, 659.25]; // A4, C#5, E5
     notes.forEach((freq, idx) => {
       const osc = this.ctx.createOscillator();
