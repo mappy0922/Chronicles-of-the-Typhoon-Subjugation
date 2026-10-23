@@ -221,6 +221,7 @@ export default function GameWorldScene() {
   const [spRegenProgress, setSpRegenProgress] = useState(0);
   const [bossHitEffect, setBossHitEffect] = useState(null);
   const [adminStrike, setAdminStrike] = useState(false);
+  const adminStrikeTimerRef = useRef(null);
   const mapIndexRef = useRef(1);
   const positionRef = useRef(48);
   const transitionRef = useRef("idle");
@@ -569,18 +570,24 @@ export default function GameWorldScene() {
   const celestialFade = Math.max(nightIntensity, (weatherInfo.cloudiness || 0) * 0.8);
   useEffect(() => {
     setAdminStrike(false);
-    if (!weatherInfo.adminForced || approach <= 0) return undefined;
+    if (!weatherInfo.adminForced || weatherInfo.weatherText === "晴れ" || approach <= 0) return undefined;
 
     let strikeTimer;
     const nightWatcher = window.setInterval(() => {
       if (pausedRef.current) return;
       if (nightIntensityRef.current < 0.99) return;
       window.clearInterval(nightWatcher);
-      strikeTimer = scheduleWhileUnpaused(() => setAdminStrike(true), 10_000);
+      strikeTimer = scheduleWhileUnpaused(() => {
+        adminStrikeTimerRef.current = null;
+        setAdminStrike(true);
+      }, 10_000);
+      adminStrikeTimerRef.current = strikeTimer;
     }, 100);
     return () => {
       window.clearInterval(nightWatcher);
-      if (strikeTimer) window.clearTimeout(strikeTimer);
+      if (strikeTimer) window.clearInterval(strikeTimer);
+      if (adminStrikeTimerRef.current) window.clearInterval(adminStrikeTimerRef.current);
+      adminStrikeTimerRef.current = null;
     };
   }, [weatherInfo.adminForced, weatherInfo.weatherText]);
   const isStrike = weatherInfo.adminForced ? adminStrike : proximityInfo.alertPhase === "strike";

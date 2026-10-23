@@ -19,7 +19,24 @@ export default function AdminPage() {
   });
   const [channel] = useState(() => "BroadcastChannel" in window ? new BroadcastChannel(CHANNEL_NAME) : null);
 
-  useEffect(() => () => channel?.close(), [channel]);
+  useEffect(() => {
+    const onMessage = (event) => {
+      if (event.data?.action === "clear") setSelected(null);
+      else if (event.data?.preset) setSelected(event.data.preset);
+    };
+    const onStorage = (event) => {
+      if (event.key !== CONTROL_KEY) return;
+      try { setSelected(JSON.parse(event.newValue || "null")?.preset || null); }
+      catch { setSelected(null); }
+    };
+    channel?.addEventListener("message", onMessage);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      channel?.removeEventListener("message", onMessage);
+      window.removeEventListener("storage", onStorage);
+      channel?.close();
+    };
+  }, [channel]);
 
   const chooseWeather = (preset) => {
     const message = { preset, updatedAt: Date.now() };

@@ -14,6 +14,7 @@ const STORAGE_KEY = "TYPHOON_SUBJUGATION_MANUAL_SAVE_V1";
 const SAVE_SLOTS_KEY = "TYPHOON_SUBJUGATION_SAVE_SLOTS_V1";
 const MAX_SAVE_SLOTS = 10;
 const WEATHER_CONTROL_KEY = "TYPHOON_SUBJUGATION_FORCED_WEATHER_V1";
+const COMBAT_SUNNY_HOLD_KEY = "TYPHOON_SUBJUGATION_COMBAT_SUNNY_HOLD_V1";
 const WEATHER_PRESETS = {
   sunny: { weatherText: "晴れ", isRaining: false, rainIntensity: 0, cloudiness: 0.02, stormIntensity: 0, nightIntensity: 0 },
   breeze: { weatherText: "そよかぜ型", isRaining: true, rainIntensity: 0.12, cloudiness: 0.22, stormIntensity: 0.16, nightIntensity: 1 },
@@ -146,6 +147,15 @@ export function GameProvider({ children }) {
   const weatherInfoRef = useRef(weatherInfo);
   const jmaWeatherInfoRef = useRef(null);
   const jmaProximityInfoRef = useRef(null);
+  const savedCombatSunnyHoldRef = useRef(undefined);
+  if (savedCombatSunnyHoldRef.current === undefined) {
+    try { savedCombatSunnyHoldRef.current = JSON.parse(localStorage.getItem(COMBAT_SUNNY_HOLD_KEY) || "null"); }
+    catch { savedCombatSunnyHoldRef.current = null; }
+  }
+  const sunnyUntilNextTyphoonRef = useRef(Boolean(savedCombatSunnyHoldRef.current?.active));
+  const typhoonAtCombatEndRef = useRef(savedCombatSunnyHoldRef.current?.typhoonName || null);
+  const weatherTransitionRef = useRef(null);
+  const returnWeatherToSunnyAfterCombat = () => window.dispatchEvent(new Event("typhoon-combat-ended"));
   useEffect(() => { weatherInfoRef.current = weatherInfo; }, [weatherInfo]);
   useEffect(() => {
     document.documentElement.classList.toggle("game-paused", isPaused);
@@ -284,6 +294,24 @@ export function GameProvider({ children }) {
       if (!isActive) return;
       jmaWeatherInfoRef.current = result.weatherInfo;
       jmaProximityInfoRef.current = result.proximityInfo;
+      if (sunnyUntilNextTyphoonRef.current) {
+        const nextTyphoonName = result.weatherInfo.typhoonName;
+        if (!nextTyphoonName || nextTyphoonName === typhoonAtCombatEndRef.current) {
+          setProximityInfo({ distanceKm: 9999, alertPhase: "calm", warningLevel: "平常", warningText: "台風情報を確認しています。", badgeColor: "#10b981" });
+          return;
+        }
+        sunnyUntilNextTyphoonRef.current = false;
+        typhoonAtCombatEndRef.current = null;
+        localStorage.removeItem(COMBAT_SUNNY_HOLD_KEY);
+        if (!localStorage.getItem(WEATHER_CONTROL_KEY)) {
+          if (weatherTransitionRef.current) weatherTransitionRef.current(result.weatherInfo, { proximityInfo: result.proximityInfo });
+          else {
+            setWeatherInfo(result.weatherInfo);
+            setProximityInfo(result.proximityInfo);
+          }
+        }
+        return;
+      }
       if (!localStorage.getItem(WEATHER_CONTROL_KEY)) setWeatherInfo(result.weatherInfo);
       setProximityInfo(result.proximityInfo);
     };
@@ -342,10 +370,39 @@ export function GameProvider({ children }) {
       };
       frameId = requestAnimationFrame(activeTransition);
     };
+    weatherTransitionRef.current = transitionWeather;
+
+    const onCombatEnded = () => {
+      const adminForced = Boolean(weatherInfoRef.current.adminForced || localStorage.getItem(WEATHER_CONTROL_KEY));
+      if (adminForced) {
+        sunnyUntilNextTyphoonRef.current = false;
+        typhoonAtCombatEndRef.current = null;
+        localStorage.removeItem(COMBAT_SUNNY_HOLD_KEY);
+        const sunnyMessage = { preset: "sunny" };
+        try { localStorage.setItem(WEATHER_CONTROL_KEY, JSON.stringify(sunnyMessage)); } catch { /* ignore storage errors */ }
+        channel?.postMessage(sunnyMessage);
+      } else {
+        sunnyUntilNextTyphoonRef.current = true;
+        typhoonAtCombatEndRef.current = weatherInfoRef.current.typhoonName || jmaWeatherInfoRef.current?.typhoonName || null;
+        try {
+          localStorage.setItem(COMBAT_SUNNY_HOLD_KEY, JSON.stringify({ active: true, typhoonName: typhoonAtCombatEndRef.current }));
+        } catch { /* ignore storage errors */ }
+        setProximityInfo({ distanceKm: 9999, alertPhase: "calm", warningLevel: "平常", warningText: "次の台風情報を確認しています。", badgeColor: "#10b981" });
+      }
+      transitionWeather({ ...WEATHER_PRESETS.sunny, status: "available" }, {
+        weatherText: "晴れ",
+        typhoonName: null,
+        distanceKm: null,
+        adminForced
+      });
+    };
 
     const transitionToPreset = (message) => {
       const target = WEATHER_PRESETS[message?.preset];
       if (!target) return;
+      sunnyUntilNextTyphoonRef.current = false;
+      typhoonAtCombatEndRef.current = null;
+      localStorage.removeItem(COMBAT_SUNNY_HOLD_KEY);
       transitionWeather(target, {
         weatherText: target.weatherText,
         typhoonName: message.preset === "sunny" ? null : target.weatherText,
@@ -354,6 +411,9 @@ export function GameProvider({ children }) {
       });
     };
     const transitionToJma = () => {
+      sunnyUntilNextTyphoonRef.current = false;
+      typhoonAtCombatEndRef.current = null;
+      localStorage.removeItem(COMBAT_SUNNY_HOLD_KEY);
       const target = jmaWeatherInfoRef.current || {
         status: "loading", weatherText: "気象庁データ取得中", isRaining: false,
         rainIntensity: 0, cloudiness: 0.04, stormIntensity: 0, nightIntensity: 0,
@@ -374,6 +434,7 @@ export function GameProvider({ children }) {
       try { transitionToPreset(JSON.parse(event.newValue)); } catch { /* ignore invalid stored state */ }
     };
     channel?.addEventListener("message", onMessage);
+    window.addEventListener("typhoon-combat-ended", onCombatEnded);
     window.addEventListener("storage", onStorage);
     try {
       const saved = localStorage.getItem(WEATHER_CONTROL_KEY);
@@ -382,6 +443,8 @@ export function GameProvider({ children }) {
     return () => {
       cancelAnimationFrame(frameId);
       channel?.removeEventListener("message", onMessage);
+      window.removeEventListener("typhoon-combat-ended", onCombatEnded);
+      weatherTransitionRef.current = null;
       channel?.close();
       window.removeEventListener("storage", onStorage);
     };
@@ -674,6 +737,7 @@ export function GameProvider({ children }) {
         setIsPaused,
         isBattleActive,
         setIsBattleActive,
+        returnWeatherToSunnyAfterCombat,
         isLoading,
         setIsLoading,
         player,

@@ -14,6 +14,7 @@ export default function BattleView() {
     defenseActions,
     setLastResult,
     setCurrentView,
+    returnWeatherToSunnyAfterCombat,
     addToEncyclopedia,
     equipWeapon,
     modifyItemCount
@@ -158,6 +159,7 @@ export default function BattleView() {
 
   // 戦闘終了処理
   const finishBattle = (victory, logs, finalBossHp) => {
+    returnWeatherToSunnyAfterCombat();
     SoundManager.playVictory();
     const damagePercent = Math.min(1.0, (activeTyphoon.maxHp - finalBossHp) / activeTyphoon.maxHp);
 

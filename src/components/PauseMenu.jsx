@@ -12,9 +12,10 @@ const VOLUME_CONTROLS = [
 ];
 
 export default function PauseMenu() {
-  const { isInTitleScreen, isInIntroSequence, isInCharacterCreation, isLoading, isBattleActive, setIsBattleActive, currentView, setCurrentView, returnToTitle, setIsPaused } = useGame();
+  const { isInTitleScreen, isInIntroSequence, isInCharacterCreation, isLoading, isBattleActive, setIsBattleActive, currentView, setCurrentView, returnToTitle, returnWeatherToSunnyAfterCombat, setIsPaused } = useGame();
   const [isOpen, setIsOpen] = useState(false);
   const [screen, setScreen] = useState("menu");
+  const [showRetireConfirm, setShowRetireConfirm] = useState(false);
   const [volumes, setVolumes] = useState(() => SoundManager.getVolumes());
   const isCombatActive = isBattleActive || currentView === "battle";
   const canPause = !isInTitleScreen && !isInIntroSequence && !isInCharacterCreation && !isLoading;
@@ -23,6 +24,10 @@ export default function PauseMenu() {
     const onKeyDown = (event) => {
       if (event.key !== "Escape" || !canPause) return;
       event.preventDefault();
+      if (showRetireConfirm) {
+        setShowRetireConfirm(false);
+        return;
+      }
       setScreen("menu");
       setIsOpen((open) => {
         setIsPaused(!open);
@@ -31,7 +36,7 @@ export default function PauseMenu() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canPause]);
+  }, [canPause, showRetireConfirm]);
 
   useEffect(() => {
     if (!canPause) {
@@ -51,11 +56,13 @@ export default function PauseMenu() {
     returnToTitle();
   };
 
-  const retireBattle = () => {
+  const confirmRetireBattle = () => {
+    setShowRetireConfirm(false);
     setIsOpen(false);
     setIsPaused(false);
     setIsBattleActive(false);
     if (currentView === "battle") setCurrentView("home");
+    returnWeatherToSunnyAfterCombat();
   };
 
   const updateVolume = (channel, value) => {
@@ -72,7 +79,7 @@ export default function PauseMenu() {
       <section className="pause-menu" role="dialog" aria-modal="true" aria-labelledby="pause-menu-title">
         <h2 id="pause-menu-title">{screen === "volume" ? "音量設定" : "メニュー"}</h2>
         {isCombatActive ? (
-          <button className="btn-ghost" onClick={retireBattle}>リタイヤ</button>
+          <button className="btn-ghost" onClick={() => setShowRetireConfirm(true)}>リタイヤ</button>
         ) : screen === "menu" ? (
           <>
             <button className="btn-ghost" onClick={() => setScreen("slots")}>セーブする</button>
@@ -103,6 +110,18 @@ export default function PauseMenu() {
           </>
         )}
       </section>
+      {showRetireConfirm && (
+        <div className="retire-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowRetireConfirm(false); }}>
+          <section className="retire-confirm-card" role="dialog" aria-modal="true" aria-labelledby="retire-confirm-title">
+            <h3 id="retire-confirm-title">戦闘をリタイヤしますか？</h3>
+            <p>戦闘を終了してマップへ戻ります。</p>
+            <div>
+              <button className="btn-ghost" onClick={confirmRetireBattle}>はい</button>
+              <button className="btn-ghost" onClick={() => setShowRetireConfirm(false)}>いいえ</button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }
