@@ -11,6 +11,8 @@ import { DEFAULT_APPEARANCE } from "../../components/PlayerAvatar";
 const GameContext = createContext(null);
 
 const STORAGE_KEY = "TYPHOON_SUBJUGATION_MANUAL_SAVE_V1";
+const SAVE_SLOTS_KEY = "TYPHOON_SUBJUGATION_SAVE_SLOTS_V1";
+const MAX_SAVE_SLOTS = 10;
 const WEATHER_CONTROL_KEY = "TYPHOON_SUBJUGATION_FORCED_WEATHER_V1";
 const WEATHER_PRESETS = {
   sunny: { weatherText: "晴れ", isRaining: false, rainIntensity: 0, cloudiness: 0.02, stormIntensity: 0, nightIntensity: 0 },
@@ -50,6 +52,28 @@ const DEFAULT_PLAYER = {
   ownedArmors: [ARMORS[0]]
 };
 
+const createEmptySaveSlots = () => Array.from({ length: MAX_SAVE_SLOTS }, () => null);
+
+const readSaveSlots = () => {
+  try {
+    const savedSlots = JSON.parse(localStorage.getItem(SAVE_SLOTS_KEY) || "null");
+    if (Array.isArray(savedSlots)) {
+      return Array.from({ length: MAX_SAVE_SLOTS }, (_, index) => savedSlots[index] || null);
+    }
+    const legacySave = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    const slots = createEmptySaveSlots();
+    if (legacySave?.player) slots[0] = legacySave;
+    return slots;
+  } catch {
+    return createEmptySaveSlots();
+  }
+};
+
+const newestSavedSlot = (slots) => slots
+  .map((save, index) => save ? { save, index } : null)
+  .filter(Boolean)
+  .sort((a, b) => (b.save.savedAt || 0) - (a.save.savedAt || 0))[0] || null;
+
 // 初期畑プロット (6面)
 const DEFAULT_PLOTS = [
   { id: 0, crop: "rice", plantedAt: Date.now() - 10000, growDuration: 25, stage: "growing" },
@@ -78,35 +102,27 @@ export function GameProvider({ children }) {
   const [isInIntroSequence, setIsInIntroSequence] = useState(false);
   const [isInCharacterCreation, setIsInCharacterCreation] = useState(false);
   const [isQuitModalOpen, setIsQuitModalOpen] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isBattleActive, setIsBattleActive] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const isPausedRef = useRef(isPaused);
+  const pauseStartedAtRef = useRef(null);
+  isPausedRef.current = isPaused;
 
-  // 手動セーブデータの存在確認
-  const [hasSaveData, setHasSaveData] = useState(() => {
-    return !!localStorage.getItem(STORAGE_KEY);
-  });
+  const [saveSlots, setSaveSlots] = useState(readSaveSlots);
+  const [hasSaveData, setHasSaveData] = useState(() => saveSlots.some(Boolean));
 
   // 最終手動セーブ日時
   const [lastSavedTime, setLastSavedTime] = useState(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        return parsed.savedAtStr || null;
-      } catch (e) {}
-    }
-    return null;
+    return newestSavedSlot(saveSlots)?.save.savedAtStr || null;
   });
 
   // セーブデータ概要
   const [saveSummary, setSaveSummary] = useState(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        const pref = PREFECTURES.find((p) => p.id === parsed.player?.prefectureId)?.name || "神奈川県";
-        return `Lv.${parsed.player?.level || 1} 守護士 / ${parsed.player?.money || 500}G / 拠点: ${pref}`;
-      } catch (e) {}
-    }
-    return null;
+    const latest = newestSavedSlot(saveSlots)?.save;
+    if (!latest) return null;
+    const pref = PREFECTURES.find((p) => p.id === latest.player?.prefectureId)?.name || "神奈川県";
+    return `Lv.${latest.player?.level || 1} 守護士 / ${latest.player?.money || 500}G / 拠点: ${pref}`;
   });
 
   // 1. プレイヤー基本情報
@@ -131,6 +147,10 @@ export function GameProvider({ children }) {
   const jmaWeatherInfoRef = useRef(null);
   const jmaProximityInfoRef = useRef(null);
   useEffect(() => { weatherInfoRef.current = weatherInfo; }, [weatherInfo]);
+  useEffect(() => {
+    document.documentElement.classList.toggle("game-paused", isPaused);
+    return () => document.documentElement.classList.remove("game-paused");
+  }, [isPaused]);
   const [proximityInfo, setProximityInfo] = useState({
     distanceKm: 800,
     alertPhase: "calm",
@@ -147,6 +167,7 @@ export function GameProvider({ children }) {
 
   // 7. 現在のアクティブビュー ("home", "farm", "arena", "shop", "defense", "battle", "result", "encyclopedia", "save")
   const [currentView, setCurrentView] = useState("home");
+  const playTimeRef = useRef(0);
 
   // 8. 都道府県変更モーダル
   const [isPrefModalOpen, setIsPrefModalOpen] = useState(false);
@@ -159,23 +180,100 @@ export function GameProvider({ children }) {
     maxHp: player.maxHp + (player.equippedArmor?.hpBonus || 0)
   };
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(SAVE_SLOTS_KEY, JSON.stringify(saveSlots));
+    } catch (error) {
+      console.error("Save slot storage error", error);
+    }
+    setHasSaveData(saveSlots.some(Boolean));
+    const latest = newestSavedSlot(saveSlots)?.save;
+    setLastSavedTime(latest?.savedAtStr || null);
+    if (latest?.player) {
+      const pref = PREFECTURES.find((item) => item.id === latest.player.prefectureId)?.name || "神奈川県";
+      setSaveSummary(`Lv.${latest.player.level || 1} 守護士 / ${latest.player.money || 500}G / 拠点: ${pref}`);
+    } else {
+      setSaveSummary(null);
+    }
+  }, [saveSlots]);
+
+  useEffect(() => {
+    if (isInTitleScreen || isInIntroSequence || isInCharacterCreation || isPaused) return undefined;
+    let previousTime = performance.now();
+    const timer = window.setInterval(() => {
+      const now = performance.now();
+      playTimeRef.current += now - previousTime;
+      previousTime = now;
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isInTitleScreen, isInIntroSequence, isInCharacterCreation, isPaused]);
+
   // --- 手動セーブ実行関数（自動セーブは行わない） ---
-  const manualSave = () => {
-    const timeStr = new Date().toLocaleString("ja-JP");
+  const manualSave = (slotIndex = 0) => {
+    if (!Number.isInteger(slotIndex) || slotIndex < 0 || slotIndex >= MAX_SAVE_SLOTS) return false;
+    const savedAt = Date.now();
+    const timeStr = new Date(savedAt).toLocaleString("ja-JP");
     const saveData = {
+      version: 2,
+      slotNumber: slotIndex + 1,
       player,
       farmPlots,
       defenseActions,
       encyclopedia,
-      savedAt: Date.now(),
+      activeTyphoon,
+      typhoonPos,
+      weatherInfo,
+      proximityInfo,
+      lastResult,
+      currentView: currentView === "battle" || currentView === "save" ? "home" : currentView,
+      playTimeMs: playTimeRef.current,
+      defeatedEnemy: lastResult?.typhoon || saveSlots[slotIndex]?.defeatedEnemy || null,
+      savedAt,
       savedAtStr: timeStr
     };
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(saveData));
-    setHasSaveData(true);
-    setLastSavedTime(timeStr);
-    const pref = PREFECTURES.find((p) => p.id === player.prefectureId)?.name || "神奈川県";
-    setSaveSummary(`Lv.${player.level} 守護士 / ${player.money}G / 拠点: ${pref}`);
+    const nextSlots = [...saveSlots];
+    nextSlots[slotIndex] = saveData;
+    try {
+      localStorage.setItem(SAVE_SLOTS_KEY, JSON.stringify(nextSlots));
+    } catch (error) {
+      console.error("Manual save error", error);
+      return false;
+    }
+    setSaveSlots(nextSlots);
     return true;
+  };
+
+  const restoreSaveData = (parsed) => {
+    if (parsed.player) setPlayer({ ...DEFAULT_PLAYER, ...parsed.player, appearance: { ...DEFAULT_APPEARANCE, ...parsed.player.appearance } });
+    if (parsed.farmPlots) setFarmPlots(parsed.farmPlots);
+    if (parsed.defenseActions) setDefenseActions(parsed.defenseActions);
+    if (parsed.encyclopedia) setEncyclopedia(parsed.encyclopedia);
+    if (parsed.activeTyphoon) setActiveTyphoon(parsed.activeTyphoon);
+    if (parsed.typhoonPos) setTyphoonPos(parsed.typhoonPos);
+    if (parsed.weatherInfo) {
+      weatherInfoRef.current = parsed.weatherInfo;
+      setWeatherInfo(parsed.weatherInfo);
+    }
+    if (parsed.proximityInfo) setProximityInfo(parsed.proximityInfo);
+    setLastResult(parsed.lastResult || null);
+    const allowedViews = ["home", "farm", "arena", "shop", "defense", "result", "encyclopedia", "save"];
+    setCurrentView(allowedViews.includes(parsed.currentView) ? parsed.currentView : "home");
+    playTimeRef.current = Number(parsed.playTimeMs) || 0;
+    setIsInTitleScreen(false);
+    setIsInIntroSequence(false);
+    setIsInCharacterCreation(false);
+  };
+
+  const loadSaveSlot = (slotIndex) => {
+    const saved = saveSlots[slotIndex];
+    if (!saved) return false;
+    try {
+      restoreSaveData(saved);
+      return true;
+    } catch (error) {
+      console.error("Save slot load error", error);
+      return false;
+    }
   };
 
   // 台風接近判定の定期更新
@@ -207,9 +305,20 @@ export function GameProvider({ children }) {
       if (!target) return;
       cancelAnimationFrame(frameId);
       const start = { ...weatherInfoRef.current };
-      const startedAt = performance.now();
+      let startedAt = performance.now();
       const duration = 4200;
+      let pausedAt = null;
       activeTransition = () => {
+        if (isPausedRef.current) {
+          if (pausedAt === null) pausedAt = performance.now();
+          frameId = requestAnimationFrame(activeTransition);
+          return;
+        }
+        if (pausedAt !== null) {
+          const pausedDuration = performance.now() - pausedAt;
+          pausedAt = null;
+          startedAt += pausedDuration;
+        }
         const progress = Math.min(1, (performance.now() - startedAt) / duration);
         const eased = progress * progress * (3 - 2 * progress);
         const interpolate = (key) => (Number(start[key]) || 0) + ((Number(target[key]) || 0) - (Number(start[key]) || 0)) * eased;
@@ -281,7 +390,22 @@ export function GameProvider({ children }) {
   // 台風の自動移動（本編プレイ時のみ）
   // 作物の成長タイマー（本編プレイ時のみ）
   useEffect(() => {
-    if (isInTitleScreen || isInIntroSequence) return;
+    if (isPaused) {
+      pauseStartedAtRef.current = Date.now();
+      return;
+    }
+    if (pauseStartedAtRef.current === null) return;
+    const pausedDuration = Date.now() - pauseStartedAtRef.current;
+    pauseStartedAtRef.current = null;
+    setFarmPlots((plots) => plots.map((plot) =>
+      plot.crop && plot.stage !== "ready" && plot.plantedAt
+        ? { ...plot, plantedAt: plot.plantedAt + pausedDuration }
+        : plot
+    ));
+  }, [isPaused]);
+
+  useEffect(() => {
+    if (isInTitleScreen || isInIntroSequence || isPaused) return;
     const interval = setInterval(() => {
       setFarmPlots((prevPlots) =>
         prevPlots.map((plot) => {
@@ -295,17 +419,23 @@ export function GameProvider({ children }) {
       );
     }, 1000);
     return () => clearInterval(interval);
-  }, [isInTitleScreen, isInIntroSequence]);
+  }, [isInTitleScreen, isInIntroSequence, isPaused]);
 
   // --- ゲーム起動・終了関連 ---
 
   // New Game: データを完全初期化し、導入シーケンスを開始（効果音なしで静かに移行）
   const startNewGame = () => {
-    localStorage.removeItem(STORAGE_KEY);
-    setHasSaveData(false);
-    setLastSavedTime(null);
-    setSaveSummary(null);
-
+    playTimeRef.current = 0;
+    setSaveSlots(createEmptySaveSlots());
+    try {
+      localStorage.removeItem(SAVE_SLOTS_KEY);
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+      console.error("Could not clear save slots", error);
+    }
+    setIsPaused(false);
+    setLastResult(null);
+    setCurrentView("home");
     setPlayer(DEFAULT_PLAYER);
     setFarmPlots(DEFAULT_PLOTS);
     setEncyclopedia(DEFAULT_ENCYCLOPEDIA);
@@ -335,21 +465,13 @@ export function GameProvider({ children }) {
 
   // Continue: 手動セーブデータを復元して開始（無音で本編へ）
   const continueGame = () => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.player) setPlayer({ ...DEFAULT_PLAYER, ...parsed.player, appearance: { ...DEFAULT_APPEARANCE, ...parsed.player.appearance } });
-        if (parsed.farmPlots) setFarmPlots(parsed.farmPlots);
-        if (parsed.defenseActions) setDefenseActions(parsed.defenseActions);
-        if (parsed.encyclopedia) setEncyclopedia(parsed.encyclopedia);
-      } catch (e) {
-        console.error("Continue error", e);
-      }
+    const latest = newestSavedSlot(saveSlots);
+    if (latest) loadSaveSlot(latest.index);
+    else {
+      setIsInTitleScreen(false);
+      setIsInIntroSequence(false);
+      setCurrentView("home");
     }
-    setIsInTitleScreen(false);
-    setIsInIntroSequence(false);
-    setCurrentView("home");
   };
 
   // Quit Game: タブを閉じる
@@ -537,15 +659,23 @@ export function GameProvider({ children }) {
         finishIntroSequence,
         completeCharacterCreation,
         hasSaveData,
+        saveSlots,
         lastSavedTime,
         saveSummary,
         manualSave,
+        loadSaveSlot,
         startNewGame,
         continueGame,
         quitGame,
         returnToTitle,
         isQuitModalOpen,
         setIsQuitModalOpen,
+        isPaused,
+        setIsPaused,
+        isBattleActive,
+        setIsBattleActive,
+        isLoading,
+        setIsLoading,
         player,
         setPlayer,
         computedStats,

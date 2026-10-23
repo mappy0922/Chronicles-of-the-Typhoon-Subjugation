@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useGame } from "../game/context/GameContext";
 import CharacterCutout from "../components/CharacterCutout";
+import SaveSlotsView from "../components/SaveSlotsView";
 import StormCanvas from "../components/StormCanvas";
 import "../styles/title-screen.css";
 
@@ -10,7 +11,6 @@ export default function TitleScreenView() {
     continueGame,
     quitGame,
     hasSaveData,
-    saveSummary,
     isQuitModalOpen,
     setIsQuitModalOpen
   } = useGame();
@@ -18,6 +18,7 @@ export default function TitleScreenView() {
   // step: "press_any_key" | "menu"
   const [step, setStep] = useState("press_any_key");
   const [showConfirmReset, setShowConfirmReset] = useState(false);
+  const [showLoadSlots, setShowLoadSlots] = useState(false);
 
   // 任意のキー入力検知（効果音なしでスッとメニューへ）
   useEffect(() => {
@@ -107,33 +108,40 @@ export default function TitleScreenView() {
             className="title-menu-btn anim-1"
             onClick={handleNewGameClick}
           >
-            <div>NEW GAME</div>
+            <div>はじめから</div>
             <div className="title-menu-sub">はじめから</div>
           </button>
 
-          {/* 2. Continue（※手動セーブ記録が存在する場合のみ表示） */}
+          <button className="title-menu-btn anim-2" onClick={() => setShowLoadSlots(true)}>
+            <div>ロードゲーム</div>
+            <div className="title-menu-sub">スロットから選ぶ</div>
+          </button>
+
+          {/* Continue は最新のセーブスロットから再開 */}
           {hasSaveData && (
             <button
-              className="title-menu-btn anim-2"
+              className="title-menu-btn anim-3"
               onClick={continueGame}
             >
-              <div>CONTINUE</div>
+              <div>つづきから</div>
               <div className="title-menu-sub">
-                {saveSummary || "前回のセーブから再開"}
+                前回のセーブから再開
               </div>
             </button>
           )}
 
           {/* 3. Quit Game */}
           <button
-            className={`title-menu-btn ${hasSaveData ? "anim-3" : "anim-2"}`}
+            className={`title-menu-btn ${hasSaveData ? "anim-4" : "anim-3"}`}
             onClick={quitGame}
           >
-            <div>QUIT GAME</div>
+            <div>ゲーム終了</div>
             <div className="title-menu-sub">ゲームを終了する</div>
           </button>
         </div>
       )}
+
+      {showLoadSlots && <SaveSlotsView mode="load" onClose={() => setShowLoadSlots(false)} />}
 
       {/* New Game 上書き確認モーダル */}
       {showConfirmReset && (
@@ -141,18 +149,14 @@ export default function TitleScreenView() {
           <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "460px", textAlign: "center" }}>
             <div style={{ fontSize: "2.5rem", marginBottom: "0.5rem" }}>⚠️</div>
             <h3 style={{ fontSize: "1.25rem", marginBottom: "0.75rem", color: "var(--accent-red)" }}>
-              セーブデータの上書き確認
+              新しいゲームの開始確認
             </h3>
-            <p style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginBottom: "1.5rem" }}>
-              以前の手動セーブデータ（{saveSummary}）が存在します。新しいゲームを開始すると、現在のセーブデータは初期化されます。よろしいですか？
-            </p>
+            <p style={{ fontSize: "0.9rem", color: "var(--text-secondary)", marginBottom: "1.5rem" }}>全てのセーブスロットを初期化して、新しいゲームを開始しますか？</p>
             <div style={{ display: "flex", gap: "1rem", justifyContent: "center" }}>
               <button className="btn-ghost" onClick={() => setShowConfirmReset(false)}>
                 キャンセル
               </button>
-              <button className="btn-danger" onClick={handleConfirmNewGame}>
-                初期化して開始する
-              </button>
+              <button className="btn-danger" onClick={handleConfirmNewGame}>スロットを初期化して開始</button>
             </div>
           </div>
         </div>

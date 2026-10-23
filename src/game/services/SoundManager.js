@@ -61,9 +61,19 @@ class SoundManagerClass {
     if (!this.ctx) return;
     const volumes = this.getEffectiveVolumes();
     const now = this.ctx.currentTime;
-    if (this.masterGain) this.masterGain.gain.setTargetAtTime(volumes.master / 100, now, 0.025);
+    const setGain = (gain, value) => {
+      // A zero setting is a hard mute; smoothing can otherwise leave a brief
+      // audible tail after the slider reaches zero.
+      if (value === 0) {
+        gain.cancelScheduledValues(now);
+        gain.setValueAtTime(0, now);
+      } else {
+        gain.setTargetAtTime(value / 100, now, 0.025);
+      }
+    };
+    if (this.masterGain) setGain(this.masterGain.gain, volumes.master);
     for (const [key, node] of Object.entries(this.channelGains)) {
-      node.gain.setTargetAtTime(volumes[key] / 100, now, 0.025);
+      setGain(node.gain, volumes[key]);
     }
   }
 
@@ -115,10 +125,18 @@ class SoundManagerClass {
 
   syncRainPlayback(fromUserGesture = false) {
     if (!this.ambientAudio) return;
-    const volumes = this.getEffectiveVolumes();
+    const currentVolumes = this.getEffectiveVolumes();
+    if (!currentVolumes.ambient || !currentVolumes.master) {
+      this.ambientAudio.volume = 0;
+      if (this.ambientAudio.paused === false) this.ambientAudio.pause();
+      return;
+    }
     if (this.rainFadeTimer === null) {
       this.rainFadeTimer = window.setInterval(() => {
         if (!this.ambientAudio) return;
+        // Read current values on every tick so slider changes take effect
+        // immediately instead of leaving the first volume snapshot in use.
+        const volumes = this.getEffectiveVolumes();
         const targetVolume = this.rainIntensity * 0.2;
         const difference = targetVolume - this.rainLevel;
         if (Math.abs(difference) < 0.003) {
@@ -131,6 +149,7 @@ class SoundManagerClass {
         this.ambientAudio.volume = this.rainLevel * volumes.ambient / 100 * volumes.master / 100;
       }, 50);
     }
+    const volumes = currentVolumes;
     if (this.rainPlaybackAllowed && this.rainIntensity > 0 && volumes.ambient > 0 && volumes.master > 0 && (fromUserGesture || this.ambientAudio.paused)) {
       const audio = this.ambientAudio;
       audio.play().then(() => {

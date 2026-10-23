@@ -4,9 +4,10 @@ import { PREFECTURES } from "../game/constants/prefectures";
 
 export default function WeatherRadar({ width = 560, height = 520, interactive = true }) {
   const canvasRef = useRef(null);
-  const { player, activeTyphoon, typhoonPos, setTyphoonPos, proximityInfo } = useGame();
+  const { player, activeTyphoon, typhoonPos, setTyphoonPos, proximityInfo, isPaused } = useGame();
 
   useEffect(() => {
+    if (isPaused) return undefined;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -163,7 +164,7 @@ export default function WeatherRadar({ width = 560, height = 520, interactive = 
     render();
 
     return () => cancelAnimationFrame(animationId);
-  }, [width, height, player.prefectureId, activeTyphoon, typhoonPos, proximityInfo]);
+  }, [width, height, player.prefectureId, activeTyphoon, typhoonPos, proximityInfo, isPaused]);
 
   // クリックで台風を任意の位置に移動させてテストできる機能
   const handleCanvasClick = (e) => {

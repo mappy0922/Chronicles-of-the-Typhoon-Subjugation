@@ -4,11 +4,11 @@ import StormCanvas from "./StormCanvas";
 import "../styles/game-world.css";
 
 const getTyphoonCharacter = (intensity) => {
-  if (intensity <= 0.2) return ["/typhoon-breeze-cutout.png", "Breeze Typhoon"];
-  if (intensity <= 0.5) return ["/typhoon-rain-cutout.png", "Heavy Rain Typhoon"];
-  if (intensity <= 0.84) return ["/typhoon-gale-cutout.png", "Gale Typhoon"];
-  if (intensity <= 0.94) return ["/typhoon-storm-cutout.png", "Storm Typhoon"];
-  return ["/typhoon-super-cutout.png", "Super Typhoon"];
+  if (intensity <= 0.2) return ["/typhoon-breeze-cutout-v3.png", "\u305D\u3088\u98A8\u578B"];
+  if (intensity <= 0.5) return ["/typhoon-rain-cutout-v3.png", "\u8C6A\u96E8\u578B"];
+  if (intensity <= 0.84) return ["/typhoon-gale-cutout-v3.png", "\u66B4\u98A8\u578B"];
+  if (intensity <= 0.94) return ["/typhoon-storm-cutout-v3.png", "\u5D50\u578B"];
+  return ["/typhoon-super-cutout-v3.png", "\u8D85\u5927\u578B\u578B"];
 };
 
 const HOUSE_LAYOUTS = [
@@ -95,7 +95,7 @@ const makeGrass = (count) => Array.from({ length: count }, (_, index) => {
   };
 });
 
-function Grass({ blades, playerPosition, mapIndex, moving }) {
+function Grass({ blades, playerPosition, mapIndex, moving, paused }) {
   const canvasRef = useRef(null);
   const [hiddenIndexes, setHiddenIndexes] = useState(() => new Set());
 
@@ -145,6 +145,7 @@ function Grass({ blades, playerPosition, mapIndex, moving }) {
   }, [blades, playerPosition, mapIndex, moving]);
 
   useEffect(() => {
+    if (paused) return undefined;
     const canvas = canvasRef.current;
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return;
@@ -191,13 +192,13 @@ function Grass({ blades, playerPosition, mapIndex, moving }) {
 
     frameId = window.requestAnimationFrame(draw);
     return () => window.cancelAnimationFrame(frameId);
-  }, [blades, hiddenIndexes]);
+  }, [blades, hiddenIndexes, paused]);
 
   return <canvas ref={canvasRef} className="world-grass-foreground" aria-hidden="true" />;
 }
 
 export default function GameWorldScene() {
-  const { player, proximityInfo, weatherInfo } = useGame();
+  const { player, setPlayer, computedStats, proximityInfo, weatherInfo, isPaused, setIsLoading, isBattleActive: battleActive, setIsBattleActive: setBattleActive } = useGame();
   const isMale = player.appearance?.gender !== "feminine";
   const [position, setPosition] = useState(48);
   const [moving, setMoving] = useState(false);
@@ -212,9 +213,14 @@ export default function GameWorldScene() {
   const [showBossGauge, setShowBossGauge] = useState(false);
   const [bossGaugeCharge, setBossGaugeCharge] = useState(0);
   const [bossGaugeDamage, setBossGaugeDamage] = useState(0);
+  const [bossGaugeTrail, setBossGaugeTrail] = useState(0);
   const [bossGaugeCharging, setBossGaugeCharging] = useState(false);
+  const [battleCommandsReady, setBattleCommandsReady] = useState(false);
+  const [battleAction, setBattleAction] = useState(null);
+  const [battleActionPulse, setBattleActionPulse] = useState(0);
+  const [spRegenProgress, setSpRegenProgress] = useState(0);
+  const [bossHitEffect, setBossHitEffect] = useState(null);
   const [adminStrike, setAdminStrike] = useState(false);
-  const [battleActive, setBattleActive] = useState(false);
   const mapIndexRef = useRef(1);
   const positionRef = useRef(48);
   const transitionRef = useRef("idle");
@@ -224,10 +230,37 @@ export default function GameWorldScene() {
   const transitionTimers = useRef([]);
   const movementInterval = useRef(null);
   const shiftHeld = useRef(false);
-  const showBossGaugeRef = useRef(false);
-  showBossGaugeRef.current = showBossGauge;
+  const battleCommandsReadyRef = useRef(false);
+  const battleCommandHandlerRef = useRef(null);
+  const battleActionTimeoutRef = useRef(null);
+  const bossHitTimeoutRef = useRef(null);
+  const bossHitCounterRef = useRef(0);
+  const bossGaugeChargeRef = useRef(0);
+  const bossGaugeTrailRef = useRef(bossGaugeTrail);
+  const spRegenProgressRef = useRef(0);
+  const pausedRef = useRef(isPaused);
+  pausedRef.current = isPaused;
+  bossGaugeChargeRef.current = bossGaugeCharge;
+  bossGaugeTrailRef.current = bossGaugeTrail;
   positionRef.current = position;
+  const bossGaugeProgress = Math.max(0, bossGaugeCharge - bossGaugeDamage);
   const grass = useMemo(() => makeGrass(1200), []);
+
+  const scheduleWhileUnpaused = (callback, delay) => {
+    let remaining = delay;
+    let lastTick = performance.now();
+    let timerId;
+    timerId = window.setInterval(() => {
+      const now = performance.now();
+      if (!pausedRef.current) remaining -= now - lastTick;
+      lastTick = now;
+      if (remaining <= 0) {
+        window.clearInterval(timerId);
+        callback();
+      }
+    }, 25);
+    return timerId;
+  };
 
   useEffect(() => {
     const frameSources = [
@@ -248,7 +281,7 @@ export default function GameWorldScene() {
   }, []);
 
   useEffect(() => {
-    if (!moving) return undefined;
+    if (!moving || isPaused) return undefined;
     const frameCount = isMale && facing > 0
       ? MALE_RIGHT_WALK_FRAMES.length
       : isMale && facing < 0
@@ -261,7 +294,7 @@ export default function GameWorldScene() {
       setWalkFrame((frame) => frame % frameCount + 1);
     }, fastWalking ? 220 : 300);
     return () => window.clearInterval(frameTimer);
-  }, [moving, fastWalking, facing, isMale]);
+  }, [moving, fastWalking, facing, isMale, isPaused]);
 
   const startMapTransition = (nextMap, entryPosition, onFadeIn, { typhoon = false } = {}) => {
     if (transitionRef.current !== "idle" || nextMap < 0 || nextMap >= HOUSE_LAYOUTS.length) return;
@@ -270,25 +303,31 @@ export default function GameWorldScene() {
     setIsTyphoonTransition(typhoon);
     setTyphoonAppearance(null);
     setShowBossGauge(false);
-    showBossGaugeRef.current = false;
     setBossGaugeCharge(0);
     setBossGaugeDamage(0);
+    setBossGaugeTrail(0);
     setBossGaugeCharging(false);
+    setBattleCommandsReady(false);
+    battleCommandsReadyRef.current = false;
+    setBattleAction(null);
+    window.clearInterval(battleActionTimeoutRef.current);
+    window.clearInterval(bossHitTimeoutRef.current);
+    setBossHitEffect(null);
     transitionRef.current = "fade-out";
     setMapTransition("fade-out");
-    transitionTimers.current.push(window.setTimeout(() => {
+    transitionTimers.current.push(scheduleWhileUnpaused(() => {
       mapIndexRef.current = nextMap;
       setMapIndex(nextMap);
       positionRef.current = entryPosition;
       setPosition(entryPosition);
       transitionRef.current = "loading";
       setMapTransition("loading");
-      transitionTimers.current.push(window.setTimeout(() => {
+      transitionTimers.current.push(scheduleWhileUnpaused(() => {
         transitionRef.current = "fade-in";
         setMapTransition("fade-in");
         setMapLabelKey((key) => key + 1);
         onFadeIn?.();
-        transitionTimers.current.push(window.setTimeout(() => {
+        transitionTimers.current.push(scheduleWhileUnpaused(() => {
           transitionRef.current = "idle";
           setMapTransition("idle");
           setIsTyphoonTransition(false);
@@ -302,23 +341,130 @@ export default function GameWorldScene() {
   };
 
   useEffect(() => {
-    if (!bossGaugeCharging) return undefined;
+    if (!bossGaugeCharging || isPaused) return undefined;
     let frameId;
     let startedAt;
     let lastUpdate = 0;
     const chargeGauge = (timestamp) => {
-      if (startedAt === undefined) startedAt = timestamp;
+      if (startedAt === undefined) startedAt = timestamp - (bossGaugeChargeRef.current / 100) * 2000;
       const charge = Math.min(100, ((timestamp - startedAt) / 2000) * 100);
       if (timestamp - lastUpdate >= 33 || charge === 100) {
         setBossGaugeCharge(charge);
+        if (bossGaugeDamage === 0) setBossGaugeTrail(charge);
         lastUpdate = timestamp;
       }
       if (charge < 100) frameId = window.requestAnimationFrame(chargeGauge);
-      else setBossGaugeCharging(false);
+      else {
+        setBossGaugeCharging(false);
+        battleCommandsReadyRef.current = true;
+        setBattleCommandsReady(true);
+      }
     };
     frameId = window.requestAnimationFrame(chargeGauge);
     return () => window.cancelAnimationFrame(frameId);
-  }, [bossGaugeCharging]);
+  }, [bossGaugeCharging, isPaused]);
+
+  useEffect(() => {
+    if (isPaused || bossGaugeTrail <= bossGaugeProgress) return undefined;
+    let frameId;
+    let previousTime;
+    let currentTrail = bossGaugeTrailRef.current;
+    const easeDamageTrail = (timestamp) => {
+      if (previousTime === undefined) previousTime = timestamp;
+      const elapsed = timestamp - previousTime;
+      previousTime = timestamp;
+      const nextTrail = Math.max(bossGaugeProgress, currentTrail - elapsed * 0.075);
+      currentTrail = nextTrail;
+      bossGaugeTrailRef.current = nextTrail;
+      setBossGaugeTrail(nextTrail);
+      if (nextTrail > bossGaugeProgress) frameId = window.requestAnimationFrame(easeDamageTrail);
+    };
+    frameId = window.requestAnimationFrame(easeDamageTrail);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [bossGaugeProgress, isPaused]);
+
+  useEffect(() => {
+    if (isPaused) return undefined;
+    if (!battleCommandsReady || player.currentSp >= (player.maxSp || 100)) {
+      spRegenProgressRef.current = 0;
+      setSpRegenProgress(0);
+      return undefined;
+    }
+    const maxSp = player.maxSp || 100;
+    const segmentSize = maxSp / 3;
+    let cycleStartedAt = performance.now() - spRegenProgressRef.current * 30_000;
+    let lastUpdate = 0;
+    let frameId;
+    const recharge = (timestamp) => {
+      const progress = Math.min(1, (timestamp - cycleStartedAt) / 30_000);
+      if (timestamp - lastUpdate >= 1000 / 30 || progress === 1) {
+        spRegenProgressRef.current = progress;
+        setSpRegenProgress(progress);
+        lastUpdate = timestamp;
+      }
+      if (progress === 1) {
+        setPlayer((current) => ({ ...current, currentSp: Math.min(maxSp, current.currentSp + segmentSize) }));
+        spRegenProgressRef.current = 0;
+        setSpRegenProgress(0);
+        return;
+      }
+      frameId = window.requestAnimationFrame(recharge);
+    };
+    frameId = window.requestAnimationFrame(recharge);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [battleCommandsReady, player.currentSp, player.maxSp, setPlayer, isPaused]);
+
+  useEffect(() => () => {
+    window.clearInterval(battleActionTimeoutRef.current);
+    window.clearInterval(bossHitTimeoutRef.current);
+  }, []);
+
+  const useBattleCommand = (command) => {
+    if (pausedRef.current || !battleCommandsReadyRef.current) return;
+    const maxHp = computedStats.maxHp || player.maxHp || 500;
+    const maxSp = player.maxSp || 100;
+    const spPerSegment = maxSp / 3;
+    const availableSp = Math.min(maxSp, player.currentSp + spPerSegment * spRegenProgressRef.current);
+    if (command === "heal" && availableSp < spPerSegment) return;
+    if (command === "special" && availableSp < maxSp) return;
+    setBattleAction(command);
+    setBattleActionPulse((pulse) => pulse + 1);
+    window.clearInterval(battleActionTimeoutRef.current);
+    battleActionTimeoutRef.current = scheduleWhileUnpaused(() => setBattleAction(null), 220);
+
+    const dealBossDamage = (damage) => {
+      const actualDamage = Math.min(damage, bossGaugeProgress);
+      if (actualDamage <= 0) return;
+      setBossGaugeTrail((currentTrail) => Math.max(currentTrail, bossGaugeProgress));
+      setBossGaugeDamage((currentDamage) => Math.min(100, currentDamage + damage));
+      bossHitCounterRef.current += 1;
+      setBossHitEffect({ id: bossHitCounterRef.current, damage: actualDamage });
+      window.clearInterval(bossHitTimeoutRef.current);
+      bossHitTimeoutRef.current = scheduleWhileUnpaused(() => setBossHitEffect(null), 900);
+    };
+
+    if (command === "fight") dealBossDamage(10);
+    if (command === "guard") return;
+    if (command === "heal") {
+      setSpRegenProgress(0);
+      spRegenProgressRef.current = 0;
+      setPlayer((current) => ({
+        ...current,
+        currentHp: Math.min(maxHp, current.currentHp + Math.round(maxHp * 0.25)),
+        currentSp: Math.max(0, availableSp - spPerSegment)
+      }));
+    }
+    if (command === "special") {
+      setSpRegenProgress(0);
+      spRegenProgressRef.current = 0;
+      setPlayer((current) => ({
+        ...current,
+        currentSp: 0
+      }));
+      dealBossDamage(30);
+    }
+  };
+  battleCommandHandlerRef.current = useBattleCommand;
 
   useEffect(() => {
     const stopMovement = () => {
@@ -330,7 +476,7 @@ export default function GameWorldScene() {
     };
 
     const moveOneStep = (direction) => {
-      if (movementLockedRef.current || transitionRef.current !== "idle") {
+      if (pausedRef.current || movementLockedRef.current || transitionRef.current !== "idle") {
         stopMovement();
         return;
       }
@@ -349,23 +495,27 @@ export default function GameWorldScene() {
     };
 
     const onKeyDown = (event) => {
+      if (pausedRef.current) return;
       if (event.key === "Shift") {
         shiftHeld.current = true;
         setFastWalking(true);
         return;
       }
       if (event.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
-      if (event.key.toLowerCase() !== "a" && event.key.toLowerCase() !== "d") return;
-      event.preventDefault();
+      const key = event.key.toLowerCase();
       if (movementLockedRef.current) {
-        if (event.key.toLowerCase() === "d" && !event.repeat && showBossGaugeRef.current) {
-          setBossGaugeDamage((damage) => Math.min(100, damage + 10));
-        }
+        if (!battleCommandsReadyRef.current || event.repeat) return;
+        const commands = { z: "fight", x: "guard", a: "heal", s: "special" };
+        if (!commands[key]) return;
+        event.preventDefault();
+        battleCommandHandlerRef.current?.(commands[key]);
         return;
       }
+      if (key !== "a" && key !== "d") return;
+      event.preventDefault();
       shiftHeld.current = event.shiftKey;
       if (event.repeat || transitionRef.current !== "idle") return;
-      const direction = event.key.toLowerCase() === "d" ? 1 : -1;
+      const direction = key === "d" ? 1 : -1;
       stopMovement();
       setFastWalking(event.shiftKey);
       setMoving(true);
@@ -395,9 +545,18 @@ export default function GameWorldScene() {
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
       stopMovement();
-      transitionTimers.current.forEach((timer) => window.clearTimeout(timer));
+      transitionTimers.current.forEach((timer) => window.clearInterval(timer));
     };
   }, []);
+
+  useEffect(() => {
+    if (!isPaused) return;
+    if (movementInterval.current) window.clearInterval(movementInterval.current);
+    movementInterval.current = null;
+    shiftHeld.current = false;
+    setFastWalking(false);
+    setMoving(false);
+  }, [isPaused]);
 
   useEffect(() => {
     setMapLabelKey((key) => key + 1);
@@ -414,9 +573,10 @@ export default function GameWorldScene() {
 
     let strikeTimer;
     const nightWatcher = window.setInterval(() => {
+      if (pausedRef.current) return;
       if (nightIntensityRef.current < 0.99) return;
       window.clearInterval(nightWatcher);
-      strikeTimer = window.setTimeout(() => setAdminStrike(true), 10_000);
+      strikeTimer = scheduleWhileUnpaused(() => setAdminStrike(true), 10_000);
     }, 100);
     return () => {
       window.clearInterval(nightWatcher);
@@ -431,10 +591,13 @@ export default function GameWorldScene() {
       setBattleActive(false);
       setTyphoonAppearance(null);
       setShowBossGauge(false);
-      showBossGaugeRef.current = false;
       setBossGaugeCharge(0);
       setBossGaugeDamage(0);
+      setBossGaugeTrail(0);
       setBossGaugeCharging(false);
+      setBattleCommandsReady(false);
+      battleCommandsReadyRef.current = false;
+      setBattleAction(null);
       return;
     }
     if (strikeActiveRef.current) return;
@@ -449,7 +612,7 @@ export default function GameWorldScene() {
     const enterResidentialMap = () => {
       if (!strikeActiveRef.current) return;
       if (transitionRef.current !== "idle") {
-        transitionTimers.current.push(window.setTimeout(enterResidentialMap, 100));
+        transitionTimers.current.push(scheduleWhileUnpaused(enterResidentialMap, 100));
         return;
       }
       const [src, name] = getTyphoonCharacter(approach);
@@ -457,10 +620,40 @@ export default function GameWorldScene() {
     };
     enterResidentialMap();
   }, [isStrike]);
+  useEffect(() => {
+    if (battleActive || !strikeActiveRef.current) return;
+    strikeActiveRef.current = false;
+    movementLockedRef.current = false;
+    transitionTimers.current.forEach((timer) => window.clearInterval(timer));
+    transitionTimers.current = [];
+    setTyphoonAppearance(null);
+    setShowBossGauge(false);
+    setBossGaugeCharge(0);
+    setBossGaugeDamage(0);
+    setBossGaugeTrail(0);
+    setBossGaugeCharging(false);
+    setBattleCommandsReady(false);
+    battleCommandsReadyRef.current = false;
+    setBattleAction(null);
+    setMapTransition("idle");
+    setIsTyphoonTransition(false);
+    if (movementInterval.current) window.clearInterval(movementInterval.current);
+    movementInterval.current = null;
+    shiftHeld.current = false;
+    setFastWalking(false);
+    setMoving(false);
+  }, [battleActive]);
   const houses = HOUSE_LAYOUTS[mapIndex];
   const isMapVisible = mapTransition === "idle" || mapTransition === "fade-in";
   const isMapNameVisible = (mapTransition === "idle" || mapTransition === "fade-in") && !battleActive;
-  const bossGaugeProgress = Math.max(0, bossGaugeCharge - bossGaugeDamage);
+  useEffect(() => {
+    setIsLoading(mapTransition === "loading");
+    return () => setIsLoading(false);
+  }, [mapTransition, setIsLoading]);
+  const playerMaxHp = computedStats.maxHp || player.maxHp || 1;
+  const playerHpRatio = Math.max(0, player.currentHp) / playerMaxHp;
+  const currentMaxSp = player.maxSp || 100;
+  const displayedSp = Math.min(currentMaxSp, player.currentSp + currentMaxSp / 3 * spRegenProgress);
 
   return (
     <section className={`game-world ${isStrike ? "is-strike" : ""} ${battleActive ? "is-battle-active" : ""} ${isTyphoonTransition ? "is-typhoon-transition" : ""}`} style={{ "--storm-darkness": skyDarkness, "--night-opacity": nightIntensity, "--celestial-opacity": 1 - celestialFade }} aria-label="草原のゲームフィールド">
@@ -480,7 +673,7 @@ export default function GameWorldScene() {
             alt={player.appearance?.gender === "feminine" ? "女性剣士" : "男性剣士"}
           />
         </div>
-        <Grass blades={grass} playerPosition={position} mapIndex={mapIndex} moving={moving} />
+          <Grass blades={grass} playerPosition={position} mapIndex={mapIndex} moving={moving} paused={isPaused} />
         <StormCanvas strengthBased flashAboveGround />
       </div>
       {isMapNameVisible && <div key={mapLabelKey} className="map-name-indicator" aria-live="polite">{MAP_NAMES[mapIndex]}</div>}
@@ -493,29 +686,82 @@ export default function GameWorldScene() {
         <div
           key={typhoonAppearance.src}
           className="typhoon-strike-arrival"
-          aria-label={`${typhoonAppearance.name}。Dキーで10%ダメージ`}
+          aria-label={typhoonAppearance.name}
           onAnimationEnd={(event) => {
             if (event.target === event.currentTarget && event.animationName === "typhoon-strike-enter") {
               setBossGaugeCharge(0);
               setBossGaugeDamage(0);
-              showBossGaugeRef.current = true;
-              setBossGaugeCharging(true);
+              setBossGaugeTrail(0);
+              battleCommandsReadyRef.current = false;
+              setBattleCommandsReady(false);
+              setBattleAction(null);
+              setBossGaugeCharging(false);
               setShowBossGauge(true);
             }
           }}
         >
-          <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className="typhoon-strike-character" />
-          {showBossGauge && <span className="boss-health-gauge" role="progressbar" aria-label="ボスゲージ" aria-valuemin={0} aria-valuemax={100} aria-valuenow={bossGaugeProgress}>
+          <div key={`boss-hit-${bossHitEffect?.id || "idle"}`} className={`typhoon-boss-sprite ${bossHitEffect ? "is-hit" : ""}`}>
+            <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className="typhoon-strike-character" />
+            {bossHitEffect && <span className="boss-damage-number" aria-live="polite">-{bossHitEffect.damage}</span>}
+          </div>
+          {showBossGauge && <>
+            <span className="boss-character-name">{typhoonAppearance.name}</span>
             <span
-              className="boss-health-gauge-fill"
-              aria-hidden="true"
-              style={{
-                width: `${bossGaugeProgress}%`,
-                backgroundColor: bossGaugeProgress <= 10 ? "#ef4444" : bossGaugeProgress <= 50 ? "#facc15" : "#a3e635"
+              className="boss-health-gauge"
+              role="progressbar"
+              aria-label="Boss gauge"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={bossGaugeProgress}
+              onAnimationEnd={(event) => {
+                if (event.target === event.currentTarget && event.animationName === "boss-gauge-spin-settle") {
+                  setBossGaugeCharge(0);
+                  setBossGaugeDamage(0);
+                  setBossGaugeTrail(0);
+                  setBossGaugeCharging(true);
+                }
               }}
-            />
-          </span>}
+            >
+              <span className="boss-health-gauge-track" aria-hidden="true">
+                <span
+                  className="boss-health-gauge-fill"
+                  style={{
+                    width: `${bossGaugeProgress}%`,
+                    backgroundColor: bossGaugeProgress <= 10 ? "#ef4444" : bossGaugeProgress <= 50 ? "#facc15" : "#a3e635"
+                  }}
+                />
+                <span
+                  className="boss-health-gauge-damage"
+                  style={{ left: `${bossGaugeProgress}%`, width: `${Math.max(0, bossGaugeTrail - bossGaugeProgress)}%` }}
+                />
+              </span>
+            </span>
+          </>}
         </div>
+        {battleCommandsReady && <section className="battle-command-panel" aria-label="Battle commands">
+          <div className="battle-status-row">
+            <div className="battle-player-portrait" aria-hidden="true">
+              <img src={isMale ? "/player-male-normalized.png" : "/player-female-normalized.png"} alt="" />
+            </div>
+            <div className="battle-player-status">
+              <div className="battle-hp-line"><span>HP</span><strong style={{ color: playerHpRatio <= 0.1 ? "#ef4444" : playerHpRatio <= 0.5 ? "#facc15" : "#fff" }}>{Math.max(0, player.currentHp)} / {playerMaxHp}</strong></div>
+              <div className="battle-sp-line" aria-label={`SP ${Math.floor(displayedSp)} / ${currentMaxSp}`}>
+                <span className="battle-sp-label">SP</span>
+                <span className="battle-sp-segments">{[0, 1, 2].map((segment) => {
+                  const segmentSize = currentMaxSp / 3;
+                  const fill = Math.max(0, Math.min(1, (displayedSp - segment * segmentSize) / segmentSize));
+                  return <span key={segment} className="battle-sp-segment"><span style={{ width: `${fill * 100}%` }} /></span>;
+                })}</span>
+              </div>
+            </div>
+          </div>
+          <div className="battle-command-list">
+            <button key={`fight-${battleActionPulse}`} className={battleAction === "fight" ? "is-selected" : ""} onClick={() => useBattleCommand("fight")}><kbd>Z</kbd><span>たたかう</span></button>
+            <button key={`guard-${battleActionPulse}`} className={battleAction === "guard" ? "is-selected" : ""} onClick={() => useBattleCommand("guard")}><kbd>X</kbd><span>まもる</span></button>
+            <button key={`heal-${battleActionPulse}`} disabled={displayedSp < currentMaxSp / 3} className={battleAction === "heal" ? "is-selected" : ""} onClick={() => useBattleCommand("heal")}><kbd>A</kbd><span>回復</span></button>
+            <button key={`special-${battleActionPulse}`} disabled={displayedSp < currentMaxSp} className={battleAction === "special" ? "is-selected" : ""} onClick={() => useBattleCommand("special")}><kbd>S</kbd><span>必殺技</span></button>
+          </div>
+        </section>}
       </div>}
     </section>
   );

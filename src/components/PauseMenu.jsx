@@ -1,29 +1,33 @@
 import React, { useEffect, useState } from "react";
 import { useGame } from "../game/context/GameContext";
 import { SoundManager } from "../game/services/SoundManager";
+import SaveSlotsView from "./SaveSlotsView";
 
 const VOLUME_CONTROLS = [
   ["bgm", "BGM"],
-  ["se", "SE"],
-  ["voice", "Voice"],
+  ["se", "効果音"],
+  ["voice", "ボイス"],
   ["ambient", "環境音"],
-  ["master", "Master Volume"]
+  ["master", "マスター音量"]
 ];
 
 export default function PauseMenu() {
-  const { isInTitleScreen, isInIntroSequence, isInCharacterCreation, manualSave, returnToTitle } = useGame();
+  const { isInTitleScreen, isInIntroSequence, isInCharacterCreation, isLoading, isBattleActive, setIsBattleActive, currentView, setCurrentView, returnToTitle, setIsPaused } = useGame();
   const [isOpen, setIsOpen] = useState(false);
   const [screen, setScreen] = useState("menu");
-  const [saved, setSaved] = useState(false);
   const [volumes, setVolumes] = useState(() => SoundManager.getVolumes());
-  const canPause = !isInTitleScreen && !isInIntroSequence && !isInCharacterCreation;
+  const isCombatActive = isBattleActive || currentView === "battle";
+  const canPause = !isInTitleScreen && !isInIntroSequence && !isInCharacterCreation && !isLoading;
 
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.key !== "Escape" || !canPause) return;
       event.preventDefault();
       setScreen("menu");
-      setIsOpen((open) => !open);
+      setIsOpen((open) => {
+        setIsPaused(!open);
+        return !open;
+      });
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -32,15 +36,26 @@ export default function PauseMenu() {
   useEffect(() => {
     if (!canPause) {
       setIsOpen(false);
+      setIsPaused(false);
       setScreen("menu");
-      setSaved(false);
     }
-  }, [canPause]);
+  }, [canPause, setIsPaused]);
 
-  if (!canPause || !isOpen) return null;
-  const saveAndNotify = () => {
-    manualSave();
-    setSaved(true);
+  const resumeGame = () => {
+    setIsOpen(false);
+    setIsPaused(false);
+  };
+  const backToTitle = () => {
+    setIsOpen(false);
+    setIsPaused(false);
+    returnToTitle();
+  };
+
+  const retireBattle = () => {
+    setIsOpen(false);
+    setIsPaused(false);
+    setIsBattleActive(false);
+    if (currentView === "battle") setCurrentView("home");
   };
 
   const updateVolume = (channel, value) => {
@@ -49,16 +64,21 @@ export default function PauseMenu() {
     SoundManager.setVolume(channel, nextValue);
   };
 
+  if (!canPause || !isOpen) return null;
+  if (screen === "slots") return <SaveSlotsView mode="save" onClose={() => setScreen("menu")} />;
+
   return (
-    <div className="pause-menu-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setIsOpen(false); }}>
+    <div className="pause-menu-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) resumeGame(); }}>
       <section className="pause-menu" role="dialog" aria-modal="true" aria-labelledby="pause-menu-title">
         <h2 id="pause-menu-title">{screen === "volume" ? "音量設定" : "メニュー"}</h2>
-        {screen === "menu" ? (
+        {isCombatActive ? (
+          <button className="btn-ghost" onClick={retireBattle}>リタイヤ</button>
+        ) : screen === "menu" ? (
           <>
-            <button className="btn-ghost" onClick={saveAndNotify}>{saved ? "保存しました" : "セーブする"}</button>
+            <button className="btn-ghost" onClick={() => setScreen("slots")}>セーブする</button>
             <button className="btn-ghost" onClick={() => setScreen("volume")}>音量設定</button>
-            <button className="btn-ghost" onClick={returnToTitle}>タイトルに戻る</button>
-            <button className="pause-menu-resume" onClick={() => setIsOpen(false)}>ゲームに戻る（Esc）</button>
+            <button className="btn-ghost" onClick={backToTitle}>タイトルに戻る</button>
+            <button className="pause-menu-resume" onClick={resumeGame}>Esc：ゲームに戻る</button>
           </>
         ) : (
           <>

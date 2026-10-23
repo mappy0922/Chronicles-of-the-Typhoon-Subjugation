@@ -3,13 +3,14 @@ import { useGame } from "../game/context/GameContext";
 
 export default function StormCanvas({ isBattle = false, strengthBased = false, flashAboveGround = false }) {
   const canvasRef = useRef(null);
-  const { proximityInfo, weatherInfo } = useGame();
+  const { proximityInfo, weatherInfo, isPaused } = useGame();
   const weatherRef = useRef(weatherInfo);
   const proximityRef = useRef(proximityInfo);
   weatherRef.current = weatherInfo;
   proximityRef.current = proximityInfo;
 
   useEffect(() => {
+    if (isPaused) return undefined;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -87,7 +88,7 @@ export default function StormCanvas({ isBattle = false, strengthBased = false, f
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animationId);
     };
-  }, [isBattle, strengthBased, flashAboveGround]);
+  }, [isBattle, strengthBased, flashAboveGround, isPaused]);
 
   return (
     <canvas

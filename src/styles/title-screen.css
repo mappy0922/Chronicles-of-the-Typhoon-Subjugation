@@ -225,6 +225,10 @@
   animation: menu-item-appear 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards 0.34s;
 }
 
+.title-menu-btn.anim-4 {
+  animation: menu-item-appear 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards 0.46s;
+}
+
 .title-menu-btn:hover {
   border-color: rgba(255, 255, 255, 0.35);
   background: rgba(30, 41, 59, 0.95);

@@ -67,6 +67,12 @@ body {
   position: relative;
 }
 
+html.game-paused *,
+html.game-paused *::before,
+html.game-paused *::after {
+  animation-play-state: paused !important;
+}
+
 .main-content {
   flex: 1;
   max-width: 1280px;
