@@ -431,7 +431,7 @@ export default function GameWorldScene() {
     window.clearInterval(bossHitTimeoutRef.current);
   }, []);
 
-  const useBattleCommand = (command) => {
+  const executeBattleCommand = (command) => {
     if (pausedRef.current || !battleCommandsReadyRef.current) return;
     const maxHp = computedStats.maxHp || player.maxHp || 500;
     const maxSp = player.maxSp || 100;
@@ -486,7 +486,7 @@ export default function GameWorldScene() {
       dealBossDamage(30);
     }
   };
-  battleCommandHandlerRef.current = useBattleCommand;
+  battleCommandHandlerRef.current = executeBattleCommand;
 
   useEffect(() => {
     const stopMovement = () => {
@@ -830,10 +830,10 @@ export default function GameWorldScene() {
             </div>
           </div>
           <div className="battle-command-list">
-            <button key={`fight-${battleActionPulse}`} className={battleAction === "fight" ? "is-selected" : ""} onClick={() => useBattleCommand("fight")}><kbd>Z</kbd><span>たたかう</span></button>
-            <button key={`guard-${battleActionPulse}`} className={battleAction === "guard" ? "is-selected" : ""} onClick={() => useBattleCommand("guard")}><kbd>X</kbd><span>まもる</span></button>
-            <button key={`heal-${battleActionPulse}`} disabled={displayedSp < currentMaxSp / 3} className={battleAction === "heal" ? "is-selected" : ""} onClick={() => useBattleCommand("heal")}><kbd>A</kbd><span>回復</span></button>
-            <button key={`special-${battleActionPulse}`} disabled={displayedSp < currentMaxSp} className={battleAction === "special" ? "is-selected" : ""} onClick={() => useBattleCommand("special")}><kbd>S</kbd><span>必殺技</span></button>
+            <button key={`fight-${battleActionPulse}`} className={battleAction === "fight" ? "is-selected" : ""} onClick={() => executeBattleCommand("fight")}><kbd>Z</kbd><span>たたかう</span></button>
+            <button key={`guard-${battleActionPulse}`} className={battleAction === "guard" ? "is-selected" : ""} onClick={() => executeBattleCommand("guard")}><kbd>X</kbd><span>まもる</span></button>
+            <button key={`heal-${battleActionPulse}`} disabled={displayedSp < currentMaxSp / 3} className={battleAction === "heal" ? "is-selected" : ""} onClick={() => executeBattleCommand("heal")}><kbd>A</kbd><span>回復</span></button>
+            <button key={`special-${battleActionPulse}`} disabled={displayedSp < currentMaxSp} className={battleAction === "special" ? "is-selected" : ""} onClick={() => executeBattleCommand("special")}><kbd>S</kbd><span>必殺技</span></button>
           </div>
         </section>}
       </div>}
