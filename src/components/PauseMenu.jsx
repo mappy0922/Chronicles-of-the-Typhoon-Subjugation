@@ -16,6 +16,7 @@ export default function PauseMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const [screen, setScreen] = useState("menu");
   const [showRetireConfirm, setShowRetireConfirm] = useState(false);
+  const [showTitleConfirm, setShowTitleConfirm] = useState(false);
   const [volumes, setVolumes] = useState(() => SoundManager.getVolumes());
   const isCombatActive = isBattleActive || currentView === "battle";
   const canPause = !isInTitleScreen && !isInIntroSequence && !isInCharacterCreation && !isLoading;
@@ -28,6 +29,10 @@ export default function PauseMenu() {
         setShowRetireConfirm(false);
         return;
       }
+      if (showTitleConfirm) {
+        setShowTitleConfirm(false);
+        return;
+      }
       setScreen("menu");
       setIsOpen((open) => {
         setIsPaused(!open);
@@ -36,7 +41,7 @@ export default function PauseMenu() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canPause, showRetireConfirm]);
+  }, [canPause, showRetireConfirm, showTitleConfirm]);
 
   useEffect(() => {
     if (!canPause) {
@@ -51,6 +56,7 @@ export default function PauseMenu() {
     setIsPaused(false);
   };
   const backToTitle = () => {
+    setShowTitleConfirm(false);
     setIsOpen(false);
     setIsPaused(false);
     returnToTitle();
@@ -84,7 +90,7 @@ export default function PauseMenu() {
           <>
             <button className="btn-ghost" onClick={() => setScreen("slots")}>セーブする</button>
             <button className="btn-ghost" onClick={() => setScreen("volume")}>音量設定</button>
-            <button className="btn-ghost" onClick={backToTitle}>タイトルに戻る</button>
+            <button className="btn-ghost" onClick={() => setShowTitleConfirm(true)}>タイトルに戻る</button>
             <button className="pause-menu-resume" onClick={resumeGame}>Esc：ゲームに戻る</button>
           </>
         ) : (
@@ -118,6 +124,18 @@ export default function PauseMenu() {
             <div>
               <button className="btn-ghost" onClick={confirmRetireBattle}>はい</button>
               <button className="btn-ghost" onClick={() => setShowRetireConfirm(false)}>いいえ</button>
+            </div>
+          </section>
+        </div>
+      )}
+      {showTitleConfirm && (
+        <div className="title-return-confirm-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowTitleConfirm(false); }}>
+          <section className="title-return-confirm-card" role="dialog" aria-modal="true" aria-labelledby="title-return-confirm-title">
+            <h3 id="title-return-confirm-title">{"\u30bf\u30a4\u30c8\u30eb\u306b\u623b\u308a\u307e\u3059\u304b\uff1f"}</h3>
+            <p>{"\u30bb\u30fc\u30d6\u3057\u3066\u3044\u306a\u3044\u5185\u5bb9\u306f\u7834\u68c4\u3055\u308c\u307e\u3059"}</p>
+            <div>
+              <button className="btn-ghost" onClick={backToTitle}>{"\u306f\u3044"}</button>
+              <button className="btn-ghost" onClick={() => setShowTitleConfirm(false)}>{"\u3044\u3044\u3048"}</button>
             </div>
           </section>
         </div>
