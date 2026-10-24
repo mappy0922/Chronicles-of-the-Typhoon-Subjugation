@@ -4,11 +4,13 @@ import { SoundManager } from "../game/services/SoundManager";
 import "../styles/save-slots.css";
 
 const ENEMY_IMAGE_BY_TYPE = {
+  breeze: "/typhoon-breeze-cutout-v3.png",
   rain: "/typhoon-rain-cutout-v3.png",
   gale: "/typhoon-gale-cutout-v3.png",
   large: "/typhoon-storm-cutout-v3.png",
   complex: "/typhoon-super-cutout-v3.png"
 };
+const ENEMY_TYPES = Object.keys(ENEMY_IMAGE_BY_TYPE);
 
 const formatPlayTime = (milliseconds = 0) => {
   const totalMinutes = Math.floor(Math.max(0, milliseconds) / 60_000);
@@ -73,8 +75,10 @@ export default function SaveSlotsView({ mode = "save", onClose }) {
             const save = saveSlots[index];
             const gender = save?.player?.appearance?.gender;
             const characterImage = gender === "feminine" ? "/player-female-normalized.png" : "/player-male-normalized.png";
-            const enemy = save?.defeatedEnemy || save?.lastResult?.typhoon;
-            const enemyImage = enemy ? ENEMY_IMAGE_BY_TYPE[enemy.type] : null;
+            const defeatedTypes = new Set([
+              ...(save?.encyclopedia || []).filter((enemy) => enemy.status === "完全討伐").map((enemy) => enemy.type),
+              save?.lastResult?.victory ? save.lastResult.typhoon?.type : null
+            ].filter(Boolean));
             return (
               <button
                 className={`save-slot-card${save ? " is-saved" : " is-empty"}${selectedSlot === index ? " is-selected" : ""}`}
@@ -91,7 +95,14 @@ export default function SaveSlotsView({ mode = "save", onClose }) {
                     <div className="save-slot-details">
                       <strong>Lv.{save.player?.level || 1}　{save.player?.name || "主人公"}</strong>
                       <span>討伐した敵</span>
-                      {enemyImage ? <img className="save-slot-enemy" src={enemyImage} alt={enemy.name || "討伐した敵"} /> : <span className="save-slot-no-enemy">討伐記録なし</span>}
+                      <div className="save-slot-enemy-list" aria-label={"\u8a0e\u4f10\u3057\u305f\u6575"}>
+                        {ENEMY_TYPES.map((type) => {
+                          const image = defeatedTypes.has(type) ? ENEMY_IMAGE_BY_TYPE[type] : null;
+                          return image
+                            ? <img key={type} className="save-slot-enemy" src={image} alt={`${type}\u578b \u53f0\u98a8 (\u8a0e\u4f10\u6e08\u307f)`} title={`${type}\u578b \u53f0\u98a8`} />
+                            : <span key={type} className="save-slot-enemy-unknown" aria-label={"\u672a\u8a0e\u4f10"}>?</span>;
+                        })}
+                      </div>
                       <small>{save.savedAtStr || (save.savedAt ? new Date(save.savedAt).toLocaleString("ja-JP") : "日時不明")}</small>
                       <small>プレイ時間：{formatPlayTime(save.playTimeMs)}</small>
                     </div>

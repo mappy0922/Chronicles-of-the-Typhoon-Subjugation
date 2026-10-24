@@ -95,9 +95,13 @@ const makeGrass = (count) => Array.from({ length: count }, (_, index) => {
   };
 });
 
-function Grass({ blades, playerPosition, mapIndex, moving, paused }) {
+function Grass({ blades, playerPosition, mapIndex, moving, paused, windStrength }) {
   const canvasRef = useRef(null);
   const [hiddenIndexes, setHiddenIndexes] = useState(() => new Set());
+  const windStrengthRef = useRef(windStrength);
+  useEffect(() => {
+    windStrengthRef.current = Math.max(0, Math.min(1, Number(windStrength) || 0));
+  }, [windStrength]);
 
   useLayoutEffect(() => {
     const updateOverlaps = () => {
@@ -173,7 +177,10 @@ function Grass({ blades, playerPosition, mapIndex, moving, paused }) {
           const x = (blade.left / 100) * bounds.width;
           const baseY = bounds.height * (1 - blade.depth * 0.96);
           const bladeHeight = Math.max(4, (Number.parseFloat(blade.height) / 100) * bounds.height);
-          const sway = Math.sin((timestamp / 850 + Number.parseFloat(blade.delay)) * Math.PI) * 3.5 + 0.5;
+          const force = windStrengthRef.current;
+          const phase = (timestamp / (850 - force * 360) + Number.parseFloat(blade.delay)) * Math.PI;
+          const gust = Math.sin(timestamp / 1500 + Number.parseFloat(blade.delay) * 2) * force * 4;
+          const sway = Math.sin(phase) * (3.5 + force * 8) + 0.5 + force * 20 + gust;
           const angle = ((Number.parseFloat(blade.lean) + sway) * Math.PI) / 180;
           const tipX = x + Math.sin(angle) * bladeHeight;
           const tipY = baseY - Math.cos(angle) * bladeHeight;
@@ -198,7 +205,7 @@ function Grass({ blades, playerPosition, mapIndex, moving, paused }) {
 }
 
 export default function GameWorldScene() {
-  const { player, setPlayer, computedStats, proximityInfo, weatherInfo, isPaused, setIsLoading, isBattleActive: battleActive, setIsBattleActive: setBattleActive } = useGame();
+  const { player, setPlayer, computedStats, proximityInfo, weatherInfo, activeTyphoon, addToEncyclopedia, setLastResult, returnWeatherToSunnyAfterCombat, isPaused, setIsLoading, isBattleActive: battleActive, setIsBattleActive: setBattleActive } = useGame();
   const isMale = player.appearance?.gender !== "feminine";
   const [position, setPosition] = useState(48);
   const [moving, setMoving] = useState(false);
@@ -220,11 +227,13 @@ export default function GameWorldScene() {
   const [battleActionPulse, setBattleActionPulse] = useState(0);
   const [spRegenProgress, setSpRegenProgress] = useState(0);
   const [bossHitEffect, setBossHitEffect] = useState(null);
+  const [bossDefeating, setBossDefeating] = useState(false);
   const [adminStrike, setAdminStrike] = useState(false);
   const adminStrikeTimerRef = useRef(null);
   const mapIndexRef = useRef(1);
   const positionRef = useRef(48);
   const transitionRef = useRef("idle");
+  const lastMapTransitionWasTyphoonRef = useRef(false);
   const strikeActiveRef = useRef(false);
   const movementLockedRef = useRef(false);
   const nightIntensityRef = useRef(0);
@@ -236,6 +245,7 @@ export default function GameWorldScene() {
   const battleActionTimeoutRef = useRef(null);
   const bossHitTimeoutRef = useRef(null);
   const bossHitCounterRef = useRef(0);
+  const bossDefeatedRef = useRef(false);
   const bossGaugeChargeRef = useRef(0);
   const bossGaugeTrailRef = useRef(bossGaugeTrail);
   const spRegenProgressRef = useRef(0);
@@ -299,6 +309,7 @@ export default function GameWorldScene() {
 
   const startMapTransition = (nextMap, entryPosition, onFadeIn, { typhoon = false } = {}) => {
     if (transitionRef.current !== "idle" || nextMap < 0 || nextMap >= HOUSE_LAYOUTS.length) return;
+    lastMapTransitionWasTyphoonRef.current = typhoon;
     const fadeDuration = typhoon ? 1200 : 400;
     const loadingDuration = typhoon ? 1200 : 450;
     setIsTyphoonTransition(typhoon);
@@ -437,11 +448,21 @@ export default function GameWorldScene() {
       const actualDamage = Math.min(damage, bossGaugeProgress);
       if (actualDamage <= 0) return;
       setBossGaugeTrail((currentTrail) => Math.max(currentTrail, bossGaugeProgress));
+      const defeatsBoss = bossGaugeProgress <= damage;
       setBossGaugeDamage((currentDamage) => Math.min(100, currentDamage + damage));
       bossHitCounterRef.current += 1;
       setBossHitEffect({ id: bossHitCounterRef.current, damage: actualDamage });
       window.clearInterval(bossHitTimeoutRef.current);
-      bossHitTimeoutRef.current = scheduleWhileUnpaused(() => setBossHitEffect(null), 900);
+      if (defeatsBoss) {
+        bossDefeatedRef.current = false;
+        setBossDefeating(true);
+        battleCommandsReadyRef.current = false;
+        setBattleCommandsReady(false);
+        setBossGaugeCharging(false);
+        setBossGaugeDamage(100);
+      } else {
+        bossHitTimeoutRef.current = scheduleWhileUnpaused(() => setBossHitEffect(null), 900);
+      }
     };
 
     if (command === "fight") dealBossDamage(10);
@@ -595,6 +616,8 @@ export default function GameWorldScene() {
     if (!isStrike) {
       strikeActiveRef.current = false;
       movementLockedRef.current = false;
+      bossDefeatedRef.current = false;
+      setBossDefeating(false);
       setBattleActive(false);
       setTyphoonAppearance(null);
       setShowBossGauge(false);
@@ -610,6 +633,8 @@ export default function GameWorldScene() {
     if (strikeActiveRef.current) return;
     strikeActiveRef.current = true;
     movementLockedRef.current = true;
+    bossDefeatedRef.current = false;
+    setBossDefeating(false);
     setBattleActive(true);
     if (movementInterval.current) {
       window.clearInterval(movementInterval.current);
@@ -652,7 +677,7 @@ export default function GameWorldScene() {
   }, [battleActive]);
   const houses = HOUSE_LAYOUTS[mapIndex];
   const isMapVisible = mapTransition === "idle" || mapTransition === "fade-in";
-  const isMapNameVisible = (mapTransition === "idle" || mapTransition === "fade-in") && !battleActive;
+  const isMapNameVisible = (mapTransition === "idle" || mapTransition === "fade-in") && !battleActive && !lastMapTransitionWasTyphoonRef.current;
   useEffect(() => {
     setIsLoading(mapTransition === "loading");
     return () => setIsLoading(false);
@@ -661,6 +686,35 @@ export default function GameWorldScene() {
   const playerHpRatio = Math.max(0, player.currentHp) / playerMaxHp;
   const currentMaxSp = player.maxSp || 100;
   const displayedSp = Math.min(currentMaxSp, player.currentSp + currentMaxSp / 3 * spRegenProgress);
+
+  const completeBossDefeat = () => {
+    if (bossDefeatedRef.current || !typhoonAppearance) return;
+    bossDefeatedRef.current = true;
+    const type = approach <= 0.2 ? "breeze" : approach <= 0.5 ? "rain" : approach <= 0.84 ? "gale" : approach <= 0.94 ? "large" : "complex";
+    const defeatedAt = Date.now();
+    const date = new Date(defeatedAt).toLocaleDateString("ja-JP");
+    const defeatedEnemy = {
+      id: `history-${defeatedAt}`,
+      name: typhoonAppearance.name,
+      type,
+      maxWind: activeTyphoon?.maxWind || Math.round(15 + approach * 55),
+      defenseScore: 100,
+      date,
+      status: "完全討伐",
+      defeatedAt
+    };
+    addToEncyclopedia(defeatedEnemy);
+    setLastResult((previous) => ({ ...(previous || {}), typhoon: defeatedEnemy, victory: true, date, defeatedAt }));
+    setBossDefeating(false);
+    setBossHitEffect(null);
+    setShowBossGauge(false);
+    setBossGaugeCharging(false);
+    setTyphoonAppearance(null);
+    strikeActiveRef.current = false;
+    movementLockedRef.current = false;
+    setBattleActive(false);
+    returnWeatherToSunnyAfterCombat();
+  };
 
   return (
     <section className={`game-world ${isStrike ? "is-strike" : ""} ${battleActive ? "is-battle-active" : ""} ${isTyphoonTransition ? "is-typhoon-transition" : ""}`} style={{ "--storm-darkness": skyDarkness, "--night-opacity": nightIntensity, "--celestial-opacity": 1 - celestialFade }} aria-label="草原のゲームフィールド">
@@ -680,7 +734,14 @@ export default function GameWorldScene() {
             alt={player.appearance?.gender === "feminine" ? "女性剣士" : "男性剣士"}
           />
         </div>
-          <Grass blades={grass} playerPosition={position} mapIndex={mapIndex} moving={moving} paused={isPaused} />
+          <Grass
+            blades={grass}
+            playerPosition={position}
+            mapIndex={mapIndex}
+            moving={moving}
+            paused={isPaused}
+            windStrength={Math.max(weatherInfo.rainIntensity || 0, weatherInfo.stormIntensity || 0)}
+          />
         <StormCanvas strengthBased flashAboveGround />
       </div>
       {isMapNameVisible && <div key={mapLabelKey} className="map-name-indicator" aria-live="polite">{MAP_NAMES[mapIndex]}</div>}
@@ -707,14 +768,20 @@ export default function GameWorldScene() {
             }
           }}
         >
-          <div key={`boss-hit-${bossHitEffect?.id || "idle"}`} className={`typhoon-boss-sprite ${bossHitEffect ? "is-hit" : ""}`}>
+          <div
+            key={bossDefeating ? "boss-defeated" : `boss-hit-${bossHitEffect?.id || "idle"}`}
+            className={`typhoon-boss-sprite ${bossHitEffect ? "is-hit" : ""} ${bossDefeating ? "is-defeated" : ""}`}
+            onAnimationEnd={(event) => {
+              if (event.target === event.currentTarget && event.animationName === "boss-defeat-exit") completeBossDefeat();
+            }}
+          >
             <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className="typhoon-strike-character" />
             {bossHitEffect && <span className="boss-damage-number" aria-live="polite">-{bossHitEffect.damage}</span>}
           </div>
           {showBossGauge && <>
-            <span className="boss-character-name">{typhoonAppearance.name}</span>
+            <span className={`boss-character-name ${bossDefeating ? "is-defeated" : ""}`}>{typhoonAppearance.name}</span>
             <span
-              className="boss-health-gauge"
+              className={`boss-health-gauge ${bossDefeating ? "is-defeated" : ""}`}
               role="progressbar"
               aria-label="Boss gauge"
               aria-valuemin={0}

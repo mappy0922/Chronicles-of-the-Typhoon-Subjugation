@@ -68,6 +68,8 @@
 .typhoon-boss-sprite { position:absolute; inset:0; display:flex; align-items:flex-end; justify-content:center; pointer-events:none; }
 .typhoon-boss-sprite.is-hit { animation:boss-hit-shake .52s ease-out both; }
 .typhoon-boss-sprite.is-hit .typhoon-strike-character { animation:boss-hit-flash .52s ease-out both; }
+.typhoon-boss-sprite.is-defeated { animation:boss-defeat-exit 2.8s ease-in-out forwards; will-change:transform,opacity; }
+.boss-character-name.is-defeated,.boss-health-gauge.is-defeated { animation:boss-defeat-exit 2.8s ease-in-out forwards; will-change:transform,opacity; }
 .boss-damage-number { position:absolute; z-index:4; top:8%; left:50%; color:#fff; font-size:clamp(1.5rem,3vw,2.5rem); font-weight:900; line-height:1; text-shadow:0 2px 3px #7f1d1d,0 0 12px rgba(239,68,68,.95); white-space:nowrap; pointer-events:none; animation:boss-damage-float .9s ease-out both; }
 .is-strike .world-ground { filter:brightness(.35) saturate(.7); }
 .is-strike .world-grass-foreground { filter:brightness(.35) saturate(.7); }
@@ -79,6 +81,7 @@
 @keyframes battle-command-press { 0% { transform:scale(.96) translateY(1px); } 60% { transform:scale(1.015) translateY(-1px); } 100% { transform:scale(1) translateY(0); } }
 @keyframes boss-gauge-spin-settle { 0% { opacity:0; transform:rotate(0deg) scale(.4); } 68% { opacity:1; transform:rotate(1260deg) scale(1.08); } 84% { transform:rotate(1480deg) scale(.97); } 100% { opacity:1; transform:rotate(1440deg) scale(1); } }
 @keyframes boss-hit-shake { 0%,100% { transform:translateX(0); } 12% { transform:translateX(-14px); } 24% { transform:translateX(13px); } 36% { transform:translateX(-10px); } 48% { transform:translateX(9px); } 62% { transform:translateX(-6px); } 76% { transform:translateX(5px); } 88% { transform:translateX(-2px); } }
+@keyframes boss-defeat-exit { 0% { opacity:1; transform:translateX(0); } 5% { transform:translateX(-14px); } 10% { transform:translateX(14px); } 15% { transform:translateX(-12px); } 20% { transform:translateX(12px); } 25% { transform:translateX(-9px); } 30% { transform:translateX(9px); } 35% { transform:translateX(-6px); } 40% { transform:translateX(6px); } 45% { transform:translateX(-4px); } 50% { transform:translateX(4px); } 55% { opacity:.82; transform:translateX(-2px); } 60% { opacity:.72; transform:translateX(2px); } 70% { opacity:.58; transform:translateX(-1px); } 82% { opacity:.34; transform:translateX(1px); } 100% { opacity:0; transform:translateX(0); } }
 @keyframes boss-hit-flash { 0%,100% { filter:drop-shadow(0 8px 14px rgba(0,0,0,.38)); } 14%,42% { filter:brightness(.95) sepia(1) saturate(9) hue-rotate(320deg) drop-shadow(0 8px 14px rgba(239,68,68,.8)); } }
 @keyframes boss-damage-float { 0% { opacity:0; transform:translate(-50%,16px) scale(.7); } 12% { opacity:1; transform:translate(-50%,0) scale(1.1); } 70% { opacity:1; transform:translate(-50%,-28px) scale(1); } 100% { opacity:0; transform:translate(-50%,-46px) scale(.94); } }
 @media(max-width:650px) { .world-player img { height:125px!important; } .world-player img.female-character-sprite { height:144px!important; } .world-house { max-height:24vh; } }

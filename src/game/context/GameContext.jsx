@@ -155,7 +155,15 @@ export function GameProvider({ children }) {
   const sunnyUntilNextTyphoonRef = useRef(Boolean(savedCombatSunnyHoldRef.current?.active));
   const typhoonAtCombatEndRef = useRef(savedCombatSunnyHoldRef.current?.typhoonName || null);
   const weatherTransitionRef = useRef(null);
+  const refreshJmaWeatherRef = useRef(null);
   const returnWeatherToSunnyAfterCombat = () => window.dispatchEvent(new Event("typhoon-combat-ended"));
+  useEffect(() => {
+    if (!sunnyUntilNextTyphoonRef.current) return;
+    const sunnyWeather = { ...WEATHER_PRESETS.sunny, status: "available", adminForced: false };
+    weatherInfoRef.current = sunnyWeather;
+    setWeatherInfo(sunnyWeather);
+    setProximityInfo({ distanceKm: 9999, alertPhase: "calm", warningLevel: "平常", warningText: "次の台風情報を確認しています。", badgeColor: "#10b981" });
+  }, []);
   useEffect(() => { weatherInfoRef.current = weatherInfo; }, [weatherInfo]);
   useEffect(() => {
     document.documentElement.classList.toggle("game-paused", isPaused);
@@ -260,11 +268,11 @@ export function GameProvider({ children }) {
     if (parsed.encyclopedia) setEncyclopedia(parsed.encyclopedia);
     if (parsed.activeTyphoon) setActiveTyphoon(parsed.activeTyphoon);
     if (parsed.typhoonPos) setTyphoonPos(parsed.typhoonPos);
-    if (parsed.weatherInfo) {
+    if (parsed.weatherInfo && !sunnyUntilNextTyphoonRef.current && !jmaWeatherInfoRef.current) {
       weatherInfoRef.current = parsed.weatherInfo;
       setWeatherInfo(parsed.weatherInfo);
     }
-    if (parsed.proximityInfo) setProximityInfo(parsed.proximityInfo);
+    if (parsed.proximityInfo && !sunnyUntilNextTyphoonRef.current && !jmaProximityInfoRef.current) setProximityInfo(parsed.proximityInfo);
     setLastResult(parsed.lastResult || null);
     const allowedViews = ["home", "farm", "arena", "shop", "defense", "result", "encyclopedia", "save"];
     setCurrentView(allowedViews.includes(parsed.currentView) ? parsed.currentView : "home");
@@ -315,10 +323,12 @@ export function GameProvider({ children }) {
       if (!localStorage.getItem(WEATHER_CONTROL_KEY)) setWeatherInfo(result.weatherInfo);
       setProximityInfo(result.proximityInfo);
     };
+    refreshJmaWeatherRef.current = refreshWeather;
     refreshWeather();
     const interval = window.setInterval(refreshWeather, 30 * 60 * 1000);
     return () => {
       isActive = false;
+      refreshJmaWeatherRef.current = null;
       window.clearInterval(interval);
     };
   }, [player.prefectureId]);
@@ -493,9 +503,14 @@ export function GameProvider({ children }) {
     try {
       localStorage.removeItem(SAVE_SLOTS_KEY);
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(COMBAT_SUNNY_HOLD_KEY);
+      localStorage.removeItem(WEATHER_CONTROL_KEY);
     } catch (error) {
       console.error("Could not clear save slots", error);
     }
+    sunnyUntilNextTyphoonRef.current = false;
+    typhoonAtCombatEndRef.current = null;
+    refreshJmaWeatherRef.current?.();
     setIsPaused(false);
     setLastResult(null);
     setCurrentView("home");

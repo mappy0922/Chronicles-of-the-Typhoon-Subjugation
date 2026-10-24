@@ -15,8 +15,9 @@
 .save-slot-details { display:flex; min-width:0; flex:1; flex-direction:column; align-items:flex-start; gap:3px; font-size:.72rem; }
 .save-slot-details>strong { max-width:100%; overflow:hidden; color:#fff; font-size:.8rem; text-overflow:ellipsis; white-space:nowrap; }
 .save-slot-details>span { color:#9fb0c4; }
-.save-slot-enemy { width:46px; height:36px; object-fit:contain; }
-.save-slot-no-enemy { min-height:36px; display:flex; align-items:center; color:#8c9bad; }
+.save-slot-enemy-list { display:flex; flex-wrap:wrap; align-items:center; gap:4px; min-height:34px; }
+.save-slot-enemy { display:block; width:38px; height:34px; object-fit:contain; }
+.save-slot-enemy-unknown { display:grid; width:30px; height:30px; place-items:center; color:#cbd5e1; border:1px solid rgba(203,213,225,.35); border-radius:5px; background:linear-gradient(145deg,rgba(148,163,184,.2),rgba(30,41,59,.52)); font-size:1.15rem; font-weight:800; line-height:1; text-shadow:0 1px 5px rgba(255,255,255,.2); }
 .save-slot-details small { color:#b5c1d0; font-size:.67rem; line-height:1.35; }
 .save-slot-empty-message { display:grid; min-height:95px; place-items:center; color:#8292a7; font-size:.88rem; }
 .save-slots-notice { margin:0; color:#6ee7b7; text-align:center; }
