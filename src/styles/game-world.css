@@ -37,6 +37,7 @@
 .strike-player-position, .typhoon-strike-arrival { position:absolute; bottom:20%; width:clamp(120px,18vw,220px); height:clamp(100px,21vh,190px); display:flex; justify-content:center; align-items:flex-end; }
 .strike-player-position { left:24%; transform:translateX(-50%); }
 .strike-player-position img { display:block; width:auto; height:100%; max-width:100%; object-fit:contain; filter:drop-shadow(0 5px 3px rgba(0,0,0,.3)); }
+.strike-player-position.is-victorious img { height:120%; max-width:none; }
 .typhoon-strike-arrival { right:-8%; width:clamp(320px,62vw,760px); height:clamp(280px,68vh,660px); cursor:default; animation:typhoon-strike-enter 8s cubic-bezier(.18,.7,.28,1) both; }
 .typhoon-strike-character { display:block; width:auto; height:100%; max-width:100%; object-fit:contain; filter:drop-shadow(0 8px 14px rgba(0,0,0,.38)); }
 .boss-health-gauge { position:absolute; z-index:2; top:-42px; left:50%; translate:-50% 0; box-sizing:border-box; width:min(calc(100vw - 32px),clamp(260px,38vw,480px)); height:16px; padding:2px; overflow:hidden; border:2px solid #f8fafc; border-radius:2px; background:rgba(8,34,54,.94); box-shadow:0 0 10px rgba(255,255,255,.35),0 2px 10px rgba(0,0,0,.65); pointer-events:none; }

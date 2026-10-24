@@ -228,6 +228,8 @@ export default function GameWorldScene() {
   const [spRegenProgress, setSpRegenProgress] = useState(0);
   const [bossHitEffect, setBossHitEffect] = useState(null);
   const [bossDefeating, setBossDefeating] = useState(false);
+  const [bossFullyDefeated, setBossFullyDefeated] = useState(false);
+  const [showVictoryPose, setShowVictoryPose] = useState(false);
   const [adminStrike, setAdminStrike] = useState(false);
   const adminStrikeTimerRef = useRef(null);
   const mapIndexRef = useRef(1);
@@ -616,8 +618,12 @@ export default function GameWorldScene() {
     if (!isStrike) {
       strikeActiveRef.current = false;
       movementLockedRef.current = false;
+      transitionTimers.current.forEach((timer) => window.clearInterval(timer));
+      transitionTimers.current = [];
       bossDefeatedRef.current = false;
       setBossDefeating(false);
+      setBossFullyDefeated(false);
+      setShowVictoryPose(false);
       setBattleActive(false);
       setTyphoonAppearance(null);
       setShowBossGauge(false);
@@ -635,6 +641,8 @@ export default function GameWorldScene() {
     movementLockedRef.current = true;
     bossDefeatedRef.current = false;
     setBossDefeating(false);
+    setBossFullyDefeated(false);
+    setShowVictoryPose(false);
     setBattleActive(true);
     if (movementInterval.current) {
       window.clearInterval(movementInterval.current);
@@ -667,6 +675,8 @@ export default function GameWorldScene() {
     setBattleCommandsReady(false);
     battleCommandsReadyRef.current = false;
     setBattleAction(null);
+    setShowVictoryPose(false);
+    setBossFullyDefeated(false);
     setMapTransition("idle");
     setIsTyphoonTransition(false);
     if (movementInterval.current) window.clearInterval(movementInterval.current);
@@ -709,11 +719,18 @@ export default function GameWorldScene() {
     setBossHitEffect(null);
     setShowBossGauge(false);
     setBossGaugeCharging(false);
-    setTyphoonAppearance(null);
-    strikeActiveRef.current = false;
-    movementLockedRef.current = false;
-    setBattleActive(false);
-    returnWeatherToSunnyAfterCombat();
+    setBossFullyDefeated(true);
+    setShowVictoryPose(true);
+    const victoryTimer = scheduleWhileUnpaused(() => {
+      transitionTimers.current = transitionTimers.current.filter((timer) => timer !== victoryTimer);
+      setShowVictoryPose(false);
+      setTyphoonAppearance(null);
+      strikeActiveRef.current = false;
+      movementLockedRef.current = false;
+      setBattleActive(false);
+      returnWeatherToSunnyAfterCombat();
+    }, 1800);
+    transitionTimers.current.push(victoryTimer);
   };
 
   return (
@@ -748,8 +765,13 @@ export default function GameWorldScene() {
       {(mapTransition === "loading" || mapTransition === "fade-in") && <div className={`map-loading-indicator ${mapTransition === "fade-in" ? "is-fading" : ""}`}>ロード中...</div>}
       {(mapTransition === "fade-out" || mapTransition === "loading") && <div className={`map-transition-curtain ${mapTransition === "fade-out" ? "is-fading-out" : ""}`} aria-hidden="true" />}
       {battleActive && typhoonAppearance && <div className="strike-encounter" aria-label="主人公と台風の対峙">
-        <div className="strike-player-position">
-          <img src={isMale ? "/player-male-normalized.png" : "/player-female-normalized.png"} alt={isMale ? "男性剣士" : "女性剣士"} />
+        <div className={`strike-player-position ${showVictoryPose ? "is-victorious" : ""}`}>
+          <img
+            src={showVictoryPose
+              ? isMale ? "/victory-male-cutout.png" : "/victory-female-cutout.png"
+              : isMale ? "/player-male-normalized.png" : "/player-female-normalized.png"}
+            alt={showVictoryPose ? "勝利ポーズ" : isMale ? "男性剣士" : "女性剣士"}
+          />
         </div>
         <div
           key={typhoonAppearance.src}
@@ -768,7 +790,7 @@ export default function GameWorldScene() {
             }
           }}
         >
-          <div
+          {!bossFullyDefeated && <div
             key={bossDefeating ? "boss-defeated" : `boss-hit-${bossHitEffect?.id || "idle"}`}
             className={`typhoon-boss-sprite ${bossHitEffect ? "is-hit" : ""} ${bossDefeating ? "is-defeated" : ""}`}
             onAnimationEnd={(event) => {
@@ -777,7 +799,7 @@ export default function GameWorldScene() {
           >
             <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className="typhoon-strike-character" />
             {bossHitEffect && <span className="boss-damage-number" aria-live="polite">-{bossHitEffect.damage}</span>}
-          </div>
+          </div>}
           {showBossGauge && <>
             <span className={`boss-character-name ${bossDefeating ? "is-defeated" : ""}`}>{typhoonAppearance.name}</span>
             <span
