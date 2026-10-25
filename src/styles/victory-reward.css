@@ -1,0 +1,25 @@
+.victory-reward-screen { position:fixed; z-index:9999; inset:0; display:grid; place-items:center; overflow:auto; padding:clamp(18px,4vh,42px); color:#f8fafc; background:linear-gradient(155deg,#0d1729,#111827 55%,#0d1729); }
+.victory-reward-screen * { box-sizing:border-box; }
+.victory-reward-content { width:min(820px,100%); display:flex; flex-direction:column; align-items:stretch; gap:clamp(14px,2.5vh,24px); text-align:center; animation:reward-screen-enter .45s ease-out both; }
+html.game-paused .victory-reward-screen *,html.game-paused .victory-reward-screen { animation-play-state:running!important; }
+.victory-reward-enemy { margin:0; color:#bae6fd; font-size:clamp(.9rem,2vw,1.1rem); font-weight:800; }
+.victory-reward-content h1 { margin:0; color:#fff; font-size:clamp(2rem,6vw,3.5rem); letter-spacing:.08em; }
+.victory-reward-rows { width:min(760px,100%); align-self:center; }
+.victory-reward-row { display:grid; grid-template-columns:minmax(150px,.8fr) minmax(0,1.2fr); align-items:center; gap:clamp(12px,3vw,30px); min-height:78px; padding:14px 8px; border-bottom:1px solid rgba(186,230,253,.25); text-align:left; }
+.victory-reward-row>span { color:#fff; font-size:clamp(.95rem,2.2vw,1.15rem); font-weight:750; }
+.victory-reward-row>strong { color:#fff; font-size:clamp(1.5rem,4vw,2.4rem); line-height:1.1; font-variant-numeric:tabular-nums; text-align:right; }
+.victory-reward-row>strong.victory-reward-money { color:#fff; }
+.victory-reward-gauge-value { display:flex; flex-direction:column; align-items:stretch; gap:6px; min-width:0; }
+.victory-reward-gauge-value>strong { color:#fff; font-size:clamp(.8rem,1.8vw,1rem); font-variant-numeric:tabular-nums; text-align:right; }
+.victory-reward-gauge-value>strong.victory-reward-exp-amount { font-size:clamp(1.5rem,4vw,2.4rem); line-height:1.1; }
+.victory-reward-gauge-line { display:flex; align-items:center; gap:10px; }
+.victory-reward-level-label { flex:0 0 auto; white-space:nowrap; }
+.victory-reward-gauge-value>strong.victory-reward-exp-progress { font-size:.8rem; }
+.victory-reward-gauge-value>em { color:#fff; font-size:.9rem; font-style:normal; font-weight:800; text-align:right; }
+.victory-reward-exp-track { flex:1; height:10px; overflow:hidden; border:1px solid rgba(255,255,255,.82); border-radius:2px; background:rgba(148,163,184,.16); }
+.victory-reward-exp-track span { display:block; height:100%; border-radius:0; background:#38bdf8; box-shadow:0 0 8px rgba(56,189,248,.5); transition:width .04s linear; }
+.victory-reward-button { align-self:center; margin-top:4px; }
+@keyframes reward-screen-enter { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes reward-level-up { from { opacity:.4; transform:scale(.9); } to { opacity:1; transform:scale(1); } }
+@media(max-height:560px) { .victory-reward-content { gap:10px; } .victory-reward-row { min-height:60px; padding:9px 5px; } .victory-reward-exp-track { height:8px; } }
+@media(max-width:420px) { .victory-reward-content { gap:16px; } .victory-reward-row { grid-template-columns:minmax(105px,.7fr) minmax(0,1.3fr); gap:10px; } .victory-reward-row>strong { font-size:1.45rem; } }

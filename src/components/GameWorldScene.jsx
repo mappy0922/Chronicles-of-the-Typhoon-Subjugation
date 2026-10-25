@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useGame } from "../game/context/GameContext";
 import StormCanvas from "./StormCanvas";
+import VictoryRewardView from "./VictoryRewardView";
 import "../styles/game-world.css";
 
 const getTyphoonCharacter = (intensity) => {
@@ -244,7 +245,7 @@ function Grass({ blades, playerPosition, mapIndex, moving, paused, windStrength 
 }
 
 export default function GameWorldScene() {
-  const { player, setPlayer, computedStats, proximityInfo, weatherInfo, activeTyphoon, addToEncyclopedia, setLastResult, returnWeatherToSunnyAfterCombat, isPaused, setIsLoading, isBattleActive: battleActive, setIsBattleActive: setBattleActive } = useGame();
+  const { player, setPlayer, gainExp, addMoney, setIsPaused, computedStats, proximityInfo, weatherInfo, activeTyphoon, addToEncyclopedia, setLastResult, returnWeatherToSunnyAfterCombat, isPaused, setIsLoading, isBattleActive: battleActive, setIsBattleActive: setBattleActive } = useGame();
   const isMale = player.appearance?.gender !== "feminine";
   const [position, setPosition] = useState(48);
   const [moving, setMoving] = useState(false);
@@ -272,6 +273,7 @@ export default function GameWorldScene() {
   const [bossDefeating, setBossDefeating] = useState(false);
   const [bossFullyDefeated, setBossFullyDefeated] = useState(false);
   const [showVictoryPose, setShowVictoryPose] = useState(false);
+  const [victoryReward, setVictoryReward] = useState(null);
   const [adminStrike, setAdminStrike] = useState(false);
   const adminStrikeTimerRef = useRef(null);
   const mapIndexRef = useRef(1);
@@ -301,6 +303,39 @@ export default function GameWorldScene() {
   positionRef.current = position;
   const bossGaugeProgress = Math.max(0, bossGaugeCharge - bossGaugeDamage);
   const grass = useMemo(() => makeGrass(1200), []);
+
+  useEffect(() => {
+    const showRetirementRewards = () => {
+      transitionTimers.current.forEach((timer) => window.clearInterval(timer));
+      transitionTimers.current = [];
+      if (movementInterval.current) window.clearInterval(movementInterval.current);
+      movementInterval.current = null;
+      window.clearInterval(battleActionTimeoutRef.current);
+      window.clearInterval(bossHitTimeoutRef.current);
+      movementLockedRef.current = false;
+      strikeActiveRef.current = false;
+      bossDefeatedRef.current = false;
+      setBattleActive(false);
+      setBattleCommandsReady(false);
+      battleCommandsReadyRef.current = false;
+      setBossDefeating(false);
+      setBossFullyDefeated(false);
+      setBossHitEffect(null);
+      setShowBossGauge(false);
+      setBossGaugeCharging(false);
+      setShowVictoryPose(false);
+      setTyphoonAppearance(null);
+      setVictoryReward({
+        playerBefore: { level: player.level, exp: player.exp, nextExp: player.nextExp },
+        expReward: 0,
+        moneyReward: 0,
+        outcome: "retired"
+      });
+      setIsPaused(true);
+    };
+    window.addEventListener("typhoon-combat-retired", showRetirementRewards);
+    return () => window.removeEventListener("typhoon-combat-retired", showRetirementRewards);
+  }, [player.level, player.exp, player.nextExp, setBattleActive, setIsPaused]);
 
   const scheduleWhileUnpaused = (callback, delay) => {
     let remaining = delay;
@@ -802,8 +837,13 @@ export default function GameWorldScene() {
       status: "完全討伐",
       defeatedAt
     };
+    const expReward = Math.round(bossMaxHp * 0.2);
+    const moneyReward = Math.round(bossMaxHp * 0.1);
+    const playerBefore = { level: player.level, exp: player.exp, nextExp: player.nextExp };
     addToEncyclopedia(defeatedEnemy);
-    setLastResult((previous) => ({ ...(previous || {}), typhoon: defeatedEnemy, victory: true, date, defeatedAt }));
+    setLastResult((previous) => ({ ...(previous || {}), typhoon: defeatedEnemy, victory: true, date, defeatedAt, expReward, rewardMoney: moneyReward }));
+    gainExp(expReward);
+    addMoney(moneyReward);
     setBossDefeating(false);
     setBossHitEffect(null);
     setShowBossGauge(false);
@@ -818,9 +858,21 @@ export default function GameWorldScene() {
       movementLockedRef.current = false;
       setBattleActive(false);
       returnWeatherToSunnyAfterCombat();
+      setVictoryReward({ playerBefore, expReward, moneyReward, enemyName: defeatedEnemy.name });
+      setIsPaused(true);
     }, 1800);
     transitionTimers.current.push(victoryTimer);
   };
+
+  if (victoryReward) {
+    return <VictoryRewardView
+      {...victoryReward}
+      onComplete={() => {
+        setVictoryReward(null);
+        setIsPaused(false);
+      }}
+    />;
+  }
 
   return (
     <section className={`game-world ${isStrike ? "is-strike" : ""} ${battleActive ? "is-battle-active" : ""} ${isTyphoonTransition ? "is-typhoon-transition" : ""}`} style={{ "--storm-darkness": skyDarkness, "--night-opacity": nightIntensity, "--celestial-opacity": 1 - celestialFade }} aria-label="草原のゲームフィールド">

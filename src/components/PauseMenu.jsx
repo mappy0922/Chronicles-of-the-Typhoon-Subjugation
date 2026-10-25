@@ -12,7 +12,7 @@ const VOLUME_CONTROLS = [
 ];
 
 export default function PauseMenu() {
-  const { isInTitleScreen, isInIntroSequence, isInCharacterCreation, isLoading, isBattleActive, setIsBattleActive, currentView, setCurrentView, returnToTitle, returnWeatherToSunnyAfterCombat, setIsPaused } = useGame();
+  const { isInTitleScreen, isInIntroSequence, isInCharacterCreation, isLoading, isPaused, isBattleActive, setIsBattleActive, currentView, setCurrentView, setLastResult, returnToTitle, returnWeatherToSunnyAfterCombat, setIsPaused } = useGame();
   const [isOpen, setIsOpen] = useState(false);
   const [screen, setScreen] = useState("menu");
   const [showRetireConfirm, setShowRetireConfirm] = useState(false);
@@ -23,7 +23,7 @@ export default function PauseMenu() {
 
   useEffect(() => {
     const onKeyDown = (event) => {
-      if (event.key !== "Escape" || !canPause) return;
+      if (event.key !== "Escape" || !canPause || (isPaused && !isOpen)) return;
       event.preventDefault();
       if (showRetireConfirm) {
         setShowRetireConfirm(false);
@@ -41,7 +41,7 @@ export default function PauseMenu() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canPause, showRetireConfirm, showTitleConfirm]);
+  }, [canPause, isPaused, isOpen, showRetireConfirm, showTitleConfirm]);
 
   useEffect(() => {
     if (!canPause) {
@@ -67,8 +67,13 @@ export default function PauseMenu() {
     setIsOpen(false);
     setIsPaused(false);
     setIsBattleActive(false);
-    if (currentView === "battle") setCurrentView("home");
     returnWeatherToSunnyAfterCombat();
+    if (currentView === "battle") {
+      setLastResult({ combatRewardScreen: true, outcome: "retired", victory: false, expReward: 0, rewardMoney: 0 });
+      setCurrentView("result");
+    } else {
+      window.dispatchEvent(new Event("typhoon-combat-retired"));
+    }
   };
 
   const updateVolume = (channel, value) => {

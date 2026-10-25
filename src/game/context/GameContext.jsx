@@ -34,7 +34,7 @@ const DEFAULT_PLAYER = {
   nextExp: 100,
   money: 500,
   maxHp: 500,
-  currentHp: 500,
+  currentHp: 550,
   maxSp: 100,
   currentSp: 100,
   baseAtk: 40,
@@ -52,6 +52,16 @@ const DEFAULT_PLAYER = {
   ownedWeapons: [WEAPONS[0], WEAPONS[2], WEAPONS[4]], // 剣・弓・盾を初期所持
   ownedArmors: [ARMORS[0]]
 };
+const createInitialPlayer = () => ({
+  ...DEFAULT_PLAYER,
+  appearance: { ...DEFAULT_APPEARANCE },
+  inventory: { ...DEFAULT_PLAYER.inventory },
+  equippedWeapon: { ...DEFAULT_PLAYER.equippedWeapon },
+  equippedArmor: { ...DEFAULT_PLAYER.equippedArmor },
+  ownedWeapons: [...DEFAULT_PLAYER.ownedWeapons],
+  ownedArmors: [...DEFAULT_PLAYER.ownedArmors]
+});
+const maxHpForLevel = (level) => 500 + (Math.max(1, Number(level) || 1) - 1) * 50;
 
 const createEmptySaveSlots = () => Array.from({ length: MAX_SAVE_SLOTS }, () => null);
 
@@ -84,6 +94,9 @@ const DEFAULT_PLOTS = [
   { id: 4, crop: null, plantedAt: null, growDuration: 0, stage: "empty" },
   { id: 5, crop: null, plantedAt: null, growDuration: 0, stage: "empty" }
 ];
+const createFreshDefaultPlots = () => DEFAULT_PLOTS.map((plot) => plot.crop
+  ? { ...plot, plantedAt: Date.now() - (plot.id === 0 ? 10_000 : 5_000) }
+  : { ...plot });
 
 const DEFAULT_ENCYCLOPEDIA = [
   {
@@ -127,7 +140,7 @@ export function GameProvider({ children }) {
   });
 
   // 1. プレイヤー基本情報
-  const [player, setPlayer] = useState(DEFAULT_PLAYER);
+  const [player, setPlayer] = useState(createInitialPlayer);
 
   // 2. 農地状態
   const [farmPlots, setFarmPlots] = useState(DEFAULT_PLOTS);
@@ -262,7 +275,11 @@ export function GameProvider({ children }) {
   };
 
   const restoreSaveData = (parsed) => {
-    if (parsed.player) setPlayer({ ...DEFAULT_PLAYER, ...parsed.player, appearance: { ...DEFAULT_APPEARANCE, ...parsed.player.appearance } });
+    if (parsed.player) {
+      const restoredPlayer = { ...DEFAULT_PLAYER, ...parsed.player, appearance: { ...DEFAULT_APPEARANCE, ...parsed.player.appearance } };
+      const maxHp = maxHpForLevel(restoredPlayer.level);
+      setPlayer({ ...restoredPlayer, maxHp, currentHp: Math.min(restoredPlayer.currentHp ?? maxHp, maxHp) });
+    }
     if (parsed.farmPlots) setFarmPlots(parsed.farmPlots);
     if (parsed.defenseActions) setDefenseActions(parsed.defenseActions);
     if (parsed.encyclopedia) setEncyclopedia(parsed.encyclopedia);
@@ -500,6 +517,9 @@ export function GameProvider({ children }) {
   const startNewGame = () => {
     playTimeRef.current = 0;
     setSaveSlots(createEmptySaveSlots());
+    setHasSaveData(false);
+    setLastSavedTime(null);
+    setSaveSummary(null);
     try {
       localStorage.removeItem(SAVE_SLOTS_KEY);
       localStorage.removeItem(STORAGE_KEY);
@@ -510,12 +530,32 @@ export function GameProvider({ children }) {
     }
     sunnyUntilNextTyphoonRef.current = false;
     typhoonAtCombatEndRef.current = null;
-    refreshJmaWeatherRef.current?.();
+    savedCombatSunnyHoldRef.current = null;
+    jmaWeatherInfoRef.current = null;
+    jmaProximityInfoRef.current = null;
+    const initialWeather = { status: "loading", weatherText: "", isRaining: false, rainIntensity: 0, cloudiness: 0.04, stormIntensity: 0, nightIntensity: 0, typhoonName: null, distanceKm: null, adminForced: false };
+    weatherInfoRef.current = initialWeather;
+    setWeatherInfo(initialWeather);
+    setProximityInfo({ distanceKm: 800, alertPhase: "calm", warningLevel: "\u5e73\u5e38", warningText: "\u53f0\u98a8\u60c5\u5831\u3092\u53d6\u5f97\u3057\u3066\u3044\u307e\u3059", badgeColor: "#10b981" });
+    setActiveTyphoon(WeatherService.getActiveTyphoon("typhoon-201821"));
+    if ("BroadcastChannel" in window) {
+      try {
+        const weatherChannel = new BroadcastChannel("typhoon-weather-control");
+        weatherChannel.postMessage({ action: "clear", updatedAt: Date.now() });
+        weatherChannel.close();
+      } catch (error) {
+        console.warn("Could not broadcast weather reset", error);
+      }
+    }
     setIsPaused(false);
+    setIsBattleActive(false);
+    setIsLoading(false);
+    setIsPrefModalOpen(false);
+    setIsQuitModalOpen(false);
     setLastResult(null);
     setCurrentView("home");
-    setPlayer(DEFAULT_PLAYER);
-    setFarmPlots(DEFAULT_PLOTS);
+    setPlayer(createInitialPlayer());
+    setFarmPlots(createFreshDefaultPlots());
     setEncyclopedia(DEFAULT_ENCYCLOPEDIA);
     setDefenseActions({
       windNet: false,
@@ -533,6 +573,7 @@ export function GameProvider({ children }) {
   // 導入シーケンス完了時（無音で本編へ）
   const finishIntroSequence = () => {
     setIsInIntroSequence(false);
+    setIsPaused(false);
     setCurrentView("home");
   };
 
@@ -576,9 +617,9 @@ export function GameProvider({ children }) {
   const gainExp = (amount) => {
     setPlayer((prev) => {
       let exp = prev.exp + amount;
-      let level = prev.level;
+      const startingLevel = prev.level || 1;
+      let level = startingLevel;
       let nextExp = prev.nextExp;
-      let maxHp = prev.maxHp;
       let baseAtk = prev.baseAtk;
       let baseDef = prev.baseDef;
       let baseSpd = prev.baseSpd;
@@ -587,11 +628,13 @@ export function GameProvider({ children }) {
         exp -= nextExp;
         level += 1;
         nextExp = Math.round(nextExp * 1.4);
-        maxHp += 40;
         baseAtk += 8;
         baseDef += 5;
         baseSpd += 3;
       }
+
+      const maxHp = maxHpForLevel(level);
+      const computedMaxHp = maxHp + (prev.equippedArmor?.hpBonus || 0);
 
       return {
         ...prev,
@@ -599,7 +642,7 @@ export function GameProvider({ children }) {
         exp,
         nextExp,
         maxHp,
-        currentHp: maxHp,
+        currentHp: level > startingLevel ? computedMaxHp : Math.min(prev.currentHp, computedMaxHp),
         baseAtk,
         baseDef,
         baseSpd

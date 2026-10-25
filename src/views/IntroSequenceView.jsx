@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import StormCanvas from "../components/StormCanvas";
 import "../styles/title-screen.css";
 
@@ -9,53 +9,42 @@ const INTRO_MESSAGES = [
 
 export default function IntroSequenceView({ onComplete }) {
   const [currentIdx, setCurrentIdx] = useState(0);
-  const [fadeState, setFadeState] = useState("fade-in"); // "fade-in" | "visible" | "fade-out"
+  const [fadeState, setFadeState] = useState("fade-in");
+  const onCompleteRef = useRef(onComplete);
+  const completedRef = useRef(false);
 
-  const advanceSequence = useCallback(() => {
-    setFadeState("fade-out");
-    setTimeout(() => {
-      if (currentIdx < INTRO_MESSAGES.length - 1) {
-        setCurrentIdx((prev) => prev + 1);
-        setFadeState("fade-in");
-      } else {
-        onComplete();
-      }
-    }, 1800); // フェードアウト時間 (1.8秒)
-  }, [currentIdx, onComplete]);
-
-  // 自動進行タイマー
   useEffect(() => {
-    let displayTimer;
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
+
+  useEffect(() => {
+    let timer;
     if (fadeState === "fade-in") {
-      // フェードイン完了まで待機 (1.8秒)
-      displayTimer = setTimeout(() => {
-        setFadeState("visible");
-      }, 1800);
+      timer = window.setTimeout(() => setFadeState("visible"), 1800);
     } else if (fadeState === "visible") {
-      // 表示維持時間 (第1文: 3.6秒, 第2文: 4.2秒)
-      const duration = currentIdx === 0 ? 3600 : 4200;
-      displayTimer = setTimeout(() => {
-        advanceSequence();
-      }, duration);
+      timer = window.setTimeout(() => setFadeState("fade-out"), currentIdx === 0 ? 3600 : 4200);
+    } else if (fadeState === "fade-out") {
+      timer = window.setTimeout(() => {
+        if (currentIdx < INTRO_MESSAGES.length - 1) {
+          setCurrentIdx((index) => index + 1);
+          setFadeState("fade-in");
+        } else if (!completedRef.current) {
+          completedRef.current = true;
+          onCompleteRef.current?.();
+        }
+      }, 1800);
     }
+    return () => window.clearTimeout(timer);
+  }, [fadeState, currentIdx]);
 
-    return () => clearTimeout(displayTimer);
-  }, [fadeState, currentIdx, advanceSequence]);
-
-  // クリックまたはキー入力による早送り
-  const handleSkip = () => {
-    if (fadeState !== "fade-out") {
-      advanceSequence();
-    }
-  };
+  const handleSkip = useCallback(() => {
+    setFadeState((state) => state === "fade-out" ? state : "fade-out");
+  }, []);
 
   useEffect(() => {
-    const handleKeyDown = () => {
-      handleSkip();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [fadeState, currentIdx]);
+    window.addEventListener("keydown", handleSkip);
+    return () => window.removeEventListener("keydown", handleSkip);
+  }, [handleSkip]);
 
   return (
     <div className="intro-sequence-container" onClick={handleSkip}>

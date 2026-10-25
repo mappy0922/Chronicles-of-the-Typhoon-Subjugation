@@ -1,9 +1,10 @@
 import React, { useEffect } from "react";
 import { useGame } from "../game/context/GameContext";
 import { SoundManager } from "../game/services/SoundManager";
+import VictoryRewardView from "../components/VictoryRewardView";
 
 export default function ResultView() {
-  const { lastResult, addMoney, gainExp, setCurrentView } = useGame();
+  const { lastResult, player, addMoney, gainExp, setCurrentView } = useGame();
 
   useEffect(() => {
     SoundManager.playVictory();
@@ -18,6 +19,16 @@ export default function ResultView() {
         </button>
       </div>
     );
+  }
+
+  if (lastResult.combatRewardScreen) {
+    return <VictoryRewardView
+      playerBefore={{ level: player.level, exp: player.exp, nextExp: player.nextExp }}
+      expReward={lastResult.expReward || 0}
+      moneyReward={lastResult.rewardMoney || 0}
+      outcome={lastResult.outcome || "defeat"}
+      onComplete={() => setCurrentView("home")}
+    />;
   }
 
   const {

@@ -175,6 +175,10 @@ export default function BattleView() {
       ...result,
       typhoon: activeTyphoon,
       victory,
+      combatRewardScreen: !victory,
+      outcome: victory ? "victory" : "defeat",
+      expReward: victory ? result.expReward : 0,
+      rewardMoney: victory ? result.rewardMoney : 0,
       turns: turn,
       date: new Date().toLocaleDateString("ja-JP")
     });
