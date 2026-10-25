@@ -4,11 +4,50 @@ import StormCanvas from "./StormCanvas";
 import "../styles/game-world.css";
 
 const getTyphoonCharacter = (intensity) => {
-  if (intensity <= 0.2) return ["/typhoon-breeze-cutout-v3.png", "\u305D\u3088\u98A8\u578B"];
-  if (intensity <= 0.5) return ["/typhoon-rain-cutout-v3.png", "\u8C6A\u96E8\u578B"];
-  if (intensity <= 0.84) return ["/typhoon-gale-cutout-v3.png", "\u66B4\u98A8\u578B"];
-  if (intensity <= 0.94) return ["/typhoon-storm-cutout-v3.png", "\u5D50\u578B"];
-  return ["/typhoon-super-cutout-v3.png", "\u8D85\u5927\u578B\u578B"];
+  if (intensity <= 0.2) return ["/typhoon-breeze-cutout-v4.png", "\u305D\u3088\u98A8\u578B"];
+  if (intensity <= 0.5) return ["/typhoon-rain-cutout-v4.png", "\u8C6A\u96E8\u578B"];
+  if (intensity <= 0.84) return ["/typhoon-gale-cutout-v4.png", "\u66B4\u98A8\u578B"];
+  if (intensity <= 0.94) return ["/typhoon-storm-cutout-v4.png", "\u5D50\u578B"];
+  return ["/typhoon-super-cutout-v4.png", "\u8D85\u5927\u578B\u578B"];
+};
+const getTyphoonType = (intensity) => {
+  if (intensity <= 0.2) return "breeze";
+  if (intensity <= 0.5) return "rain";
+  if (intensity <= 0.84) return "gale";
+  if (intensity <= 0.94) return "large";
+  return "complex";
+};
+const BOSS_MAX_HP = { breeze: 1000, rain: 3000, gale: 5000, large: 10000, complex: 20000 };
+const FOCUS_TARGETS = [
+  { id: "head", label: "\u982d", x: 50, y: 22 },
+  { id: "eyes", label: "\u76ee", x: 50, y: 43 },
+  { id: "hand", label: "\u624b", x: 76, y: 68 },
+  { id: "foot", label: "\u8db3", x: 50, y: 91 }
+];
+const FOCUS_MARK_OFFSETS = {
+  breeze: { eyes: { y: 2 }, foot: { x: 1 } },
+  rain: { all: { x: -2, y: 2 } },
+  large: { all: { x: -2 } },
+  shared: { eyes: { x: -2 }, leftHand: { x: -2 } }
+};
+const getAdjustedFocusTarget = (targetId, typhoonType, handSide = "right") => {
+  const isHand = targetId.startsWith("hand-") || targetId === "hand";
+  const selectedHandSide = targetId.startsWith("hand-") ? targetId.slice("hand-".length) : handSide;
+  const baseTarget = FOCUS_TARGETS.find((target) => target.id === (isHand ? "hand" : targetId)) || FOCUS_TARGETS[0];
+  let x = isHand ? selectedHandSide === "right" ? 76 : 24 : baseTarget.x;
+  let y = baseTarget.y;
+  const typeOffset = FOCUS_MARK_OFFSETS[typhoonType]?.[baseTarget.id] || FOCUS_MARK_OFFSETS[typhoonType]?.all;
+  const sharedOffset = FOCUS_MARK_OFFSETS.shared[baseTarget.id === "hand" && selectedHandSide === "left" ? "leftHand" : baseTarget.id];
+  x += (typeOffset?.x || 0) + (sharedOffset?.x || 0);
+  y += (typeOffset?.y || 0) + (sharedOffset?.y || 0);
+
+  return {
+    ...baseTarget,
+    id: isHand ? `hand-${selectedHandSide}` : baseTarget.id,
+    label: isHand ? selectedHandSide === "right" ? "\u53f3\u624b" : "\u5de6\u624b" : baseTarget.label,
+    x: Math.max(2, Math.min(98, x)),
+    y: Math.max(2, Math.min(98, y))
+  };
 };
 
 const HOUSE_LAYOUTS = [
@@ -223,6 +262,9 @@ export default function GameWorldScene() {
   const [bossGaugeTrail, setBossGaugeTrail] = useState(0);
   const [bossGaugeCharging, setBossGaugeCharging] = useState(false);
   const [battleCommandsReady, setBattleCommandsReady] = useState(false);
+  const [focusTargetIndex, setFocusTargetIndex] = useState(0);
+  const [handSide, setHandSide] = useState("right");
+  const [focusModifierHeld, setFocusModifierHeld] = useState(false);
   const [battleAction, setBattleAction] = useState(null);
   const [battleActionPulse, setBattleActionPulse] = useState(0);
   const [spRegenProgress, setSpRegenProgress] = useState(0);
@@ -244,6 +286,7 @@ export default function GameWorldScene() {
   const shiftHeld = useRef(false);
   const battleCommandsReadyRef = useRef(false);
   const battleCommandHandlerRef = useRef(null);
+  const battleFocusHandlerRef = useRef(null);
   const battleActionTimeoutRef = useRef(null);
   const bossHitTimeoutRef = useRef(null);
   const bossHitCounterRef = useRef(0);
@@ -433,6 +476,18 @@ export default function GameWorldScene() {
     window.clearInterval(bossHitTimeoutRef.current);
   }, []);
 
+  const moveBattleFocus = (direction) => {
+    if (bossDefeatedRef.current) return;
+    if (direction === "left" || direction === "right") {
+      if (focusTargetIndex === 2) setHandSide(direction);
+      return;
+    }
+    const nextIndex = (focusTargetIndex + direction + FOCUS_TARGETS.length) % FOCUS_TARGETS.length;
+    setFocusTargetIndex(nextIndex);
+    if (nextIndex === 2) setHandSide("right");
+  };
+  battleFocusHandlerRef.current = moveBattleFocus;
+
   const executeBattleCommand = (command) => {
     if (pausedRef.current || !battleCommandsReadyRef.current) return;
     const maxHp = computedStats.maxHp || player.maxHp || 500;
@@ -446,14 +501,16 @@ export default function GameWorldScene() {
     window.clearInterval(battleActionTimeoutRef.current);
     battleActionTimeoutRef.current = scheduleWhileUnpaused(() => setBattleAction(null), 220);
 
-    const dealBossDamage = (damage) => {
-      const actualDamage = Math.min(damage, bossGaugeProgress);
-      if (actualDamage <= 0) return;
+    const dealBossDamage = (damage, critical) => {
+      const damageAsGaugePercent = (damage / bossMaxHp) * 100;
+      const actualProgressDamage = Math.min(damageAsGaugePercent, bossGaugeProgress);
+      if (actualProgressDamage <= 0) return;
+      const actualHpDamage = Math.min(bossCurrentHp, Math.max(1, Math.round((bossMaxHp * actualProgressDamage) / 100)));
       setBossGaugeTrail((currentTrail) => Math.max(currentTrail, bossGaugeProgress));
-      const defeatsBoss = bossGaugeProgress <= damage;
-      setBossGaugeDamage((currentDamage) => Math.min(100, currentDamage + damage));
+      const defeatsBoss = damage >= bossCurrentHp;
+      setBossGaugeDamage((currentDamage) => Math.min(100, currentDamage + actualProgressDamage));
       bossHitCounterRef.current += 1;
-      setBossHitEffect({ id: bossHitCounterRef.current, damage: actualDamage });
+      setBossHitEffect({ id: bossHitCounterRef.current, damage: actualHpDamage, targetId: focusTarget.id, typhoonType: bossType, critical });
       window.clearInterval(bossHitTimeoutRef.current);
       if (defeatsBoss) {
         bossDefeatedRef.current = false;
@@ -467,7 +524,13 @@ export default function GameWorldScene() {
       }
     };
 
-    if (command === "fight") dealBossDamage(10);
+    const attackPower = Math.max(1, Number(player.equippedWeapon?.attack) || 10);
+    const attackBoss = (baseDamage) => {
+      const focusMultiplier = focusTarget.id === "eyes" ? 2 : 1;
+      const critical = Math.random() < 0.05;
+      dealBossDamage(baseDamage * focusMultiplier * (critical ? 3 : 1), critical);
+    };
+    if (command === "fight") attackBoss(attackPower);
     if (command === "guard") return;
     if (command === "heal") {
       setSpRegenProgress(0);
@@ -485,7 +548,7 @@ export default function GameWorldScene() {
         ...current,
         currentSp: 0
       }));
-      dealBossDamage(30);
+      attackBoss(attackPower * 3);
     }
   };
   battleCommandHandlerRef.current = executeBattleCommand;
@@ -522,12 +585,22 @@ export default function GameWorldScene() {
       if (pausedRef.current) return;
       if (event.key === "Shift") {
         shiftHeld.current = true;
-        setFastWalking(true);
+        if (movementLockedRef.current) setFocusModifierHeld(true);
+        else setFastWalking(true);
         return;
       }
       if (event.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
       const key = event.key.toLowerCase();
       if (movementLockedRef.current) {
+        if (event.key.startsWith("Arrow")) {
+          event.preventDefault();
+          if (event.repeat) return;
+          if (event.shiftKey && event.key === "ArrowUp") battleFocusHandlerRef.current?.(-1);
+          else if (event.shiftKey && event.key === "ArrowDown") battleFocusHandlerRef.current?.(1);
+          else if (event.key === "ArrowLeft") battleFocusHandlerRef.current?.("left");
+          else if (event.key === "ArrowRight") battleFocusHandlerRef.current?.("right");
+          return;
+        }
         if (!battleCommandsReadyRef.current || event.repeat) return;
         const commands = { z: "fight", x: "guard", a: "heal", s: "special" };
         if (!commands[key]) return;
@@ -550,6 +623,7 @@ export default function GameWorldScene() {
     const onKeyUp = (event) => {
       if (event.key === "Shift") {
         shiftHeld.current = false;
+        setFocusModifierHeld(false);
         setFastWalking(false);
         return;
       }
@@ -558,6 +632,7 @@ export default function GameWorldScene() {
 
     const onBlur = () => {
       shiftHeld.current = false;
+      setFocusModifierHeld(false);
       setFastWalking(false);
       stopMovement();
     };
@@ -578,6 +653,7 @@ export default function GameWorldScene() {
     if (movementInterval.current) window.clearInterval(movementInterval.current);
     movementInterval.current = null;
     shiftHeld.current = false;
+    setFocusModifierHeld(false);
     setFastWalking(false);
     setMoving(false);
   }, [isPaused]);
@@ -587,6 +663,9 @@ export default function GameWorldScene() {
   }, []);
 
   const approach = Math.max(0, Math.min(1, weatherInfo.stormIntensity || 0));
+  const bossType = getTyphoonType(approach);
+  const bossMaxHp = BOSS_MAX_HP[bossType];
+  const bossCurrentHp = Math.round((bossMaxHp * bossGaugeProgress) / 100);
   const nightIntensity = Math.max(0, Math.min(1, weatherInfo.nightIntensity ?? approach));
   nightIntensityRef.current = nightIntensity;
   const skyDarkness = Math.max(nightIntensity, (weatherInfo.cloudiness || 0) * 0.28);
@@ -621,6 +700,9 @@ export default function GameWorldScene() {
       transitionTimers.current.forEach((timer) => window.clearInterval(timer));
       transitionTimers.current = [];
       bossDefeatedRef.current = false;
+      setFocusTargetIndex(0);
+      setHandSide("right");
+      setFocusModifierHeld(false);
       setBossDefeating(false);
       setBossFullyDefeated(false);
       setShowVictoryPose(false);
@@ -640,6 +722,9 @@ export default function GameWorldScene() {
     strikeActiveRef.current = true;
     movementLockedRef.current = true;
     bossDefeatedRef.current = false;
+    setFocusTargetIndex(0);
+    setHandSide("right");
+    setFocusModifierHeld(false);
     setBossDefeating(false);
     setBossFullyDefeated(false);
     setShowVictoryPose(false);
@@ -696,11 +781,15 @@ export default function GameWorldScene() {
   const playerHpRatio = Math.max(0, player.currentHp) / playerMaxHp;
   const currentMaxSp = player.maxSp || 100;
   const displayedSp = Math.min(currentMaxSp, player.currentSp + currentMaxSp / 3 * spRegenProgress);
+  const focusTarget = getAdjustedFocusTarget(FOCUS_TARGETS[focusTargetIndex]?.id || "head", bossType, handSide);
+  const damageTarget = bossHitEffect
+    ? getAdjustedFocusTarget(bossHitEffect.targetId, bossHitEffect.typhoonType || bossType, handSide)
+    : focusTarget;
 
   const completeBossDefeat = () => {
     if (bossDefeatedRef.current || !typhoonAppearance) return;
     bossDefeatedRef.current = true;
-    const type = approach <= 0.2 ? "breeze" : approach <= 0.5 ? "rain" : approach <= 0.84 ? "gale" : approach <= 0.94 ? "large" : "complex";
+    const type = getTyphoonType(approach);
     const defeatedAt = Date.now();
     const date = new Date(defeatedAt).toLocaleDateString("ja-JP");
     const defeatedEnemy = {
@@ -797,18 +886,30 @@ export default function GameWorldScene() {
               if (event.target === event.currentTarget && event.animationName === "boss-defeat-exit") completeBossDefeat();
             }}
           >
-            <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className="typhoon-strike-character" />
-            {bossHitEffect && <span className="boss-damage-number" aria-live="polite">-{bossHitEffect.damage}</span>}
+            <div className="typhoon-boss-art">
+              <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className="typhoon-strike-character" />
+              {battleCommandsReady && focusModifierHeld && !bossDefeating && bossHitEffect?.targetId !== focusTarget.id && <span
+                className="boss-focus-marker"
+                style={{ left: `${focusTarget.x}%`, top: `${focusTarget.y}%` }}
+                aria-label={`${focusTarget.label}\u306b\u6ce8\u76ee\u4e2d`}
+              ><span className="boss-focus-marker-label">{focusTarget.label}</span></span>}
+              {bossHitEffect && <span
+                className={`boss-damage-number ${bossHitEffect.critical ? "is-critical" : ""}`}
+                style={{ left: `${damageTarget.x}%`, top: `${damageTarget.y}%` }}
+                aria-live="polite"
+              >{bossHitEffect.critical && <span className="boss-damage-critical">CRITICAL x3</span>}-{bossHitEffect.damage}</span>}
+            </div>
           </div>}
           {showBossGauge && <>
             <span className={`boss-character-name ${bossDefeating ? "is-defeated" : ""}`}>{typhoonAppearance.name}</span>
             <span
               className={`boss-health-gauge ${bossDefeating ? "is-defeated" : ""}`}
               role="progressbar"
-              aria-label="Boss gauge"
+              aria-label={`${typhoonAppearance.name} HP`}
               aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={bossGaugeProgress}
+              aria-valuemax={bossMaxHp}
+              aria-valuenow={bossCurrentHp}
+              aria-valuetext={`${bossCurrentHp} / ${bossMaxHp}`}
               onAnimationEnd={(event) => {
                 if (event.target === event.currentTarget && event.animationName === "boss-gauge-spin-settle") {
                   setBossGaugeCharge(0);
@@ -835,6 +936,7 @@ export default function GameWorldScene() {
           </>}
         </div>
         {battleCommandsReady && <section className="battle-command-panel" aria-label="Battle commands">
+          <div className="battle-focus-hint">{"Shift + \u2191 / \u2193 : \u90e8\u4f4d\u5207\u66ff\u3000\u624b\u306f \u2190 / \u2192"}</div>
           <div className="battle-status-row">
             <div className="battle-player-portrait" aria-hidden="true">
               <img src={isMale ? "/player-male-normalized.png" : "/player-female-normalized.png"} alt="" />

@@ -4,11 +4,11 @@ import { SoundManager } from "../game/services/SoundManager";
 import "../styles/save-slots.css";
 
 const ENEMY_IMAGE_BY_TYPE = {
-  breeze: "/typhoon-breeze-cutout-v3.png",
-  rain: "/typhoon-rain-cutout-v3.png",
-  gale: "/typhoon-gale-cutout-v3.png",
-  large: "/typhoon-storm-cutout-v3.png",
-  complex: "/typhoon-super-cutout-v3.png"
+  breeze: "/typhoon-breeze-cutout-v4.png",
+  rain: "/typhoon-rain-cutout-v4.png",
+  gale: "/typhoon-gale-cutout-v4.png",
+  large: "/typhoon-storm-cutout-v4.png",
+  complex: "/typhoon-super-cutout-v4.png"
 };
 const ENEMY_TYPES = Object.keys(ENEMY_IMAGE_BY_TYPE);
 

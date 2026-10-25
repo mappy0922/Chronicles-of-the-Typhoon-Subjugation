@@ -4,7 +4,7 @@ export const WEAPONS = [
     id: "bronze_sword",
     name: "討伐の銅剣",
     type: "sword",
-    attack: 45,
+    attack: 10,
     defense: 5,
     speed: 15,
     cost: 150,
