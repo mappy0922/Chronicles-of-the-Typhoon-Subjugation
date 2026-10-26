@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { useGame } from "../game/context/GameContext";
 import StormCanvas from "./StormCanvas";
 import VictoryRewardView from "./VictoryRewardView";
+import { getKeyBindings } from "../game/services/KeyBindings";
 import "../styles/game-world.css";
 
 const getTyphoonCharacter = (intensity) => {
@@ -246,7 +247,14 @@ function Grass({ blades, playerPosition, mapIndex, moving, paused, windStrength 
 
 export default function GameWorldScene() {
   const { player, setPlayer, gainExp, addMoney, setIsPaused, computedStats, proximityInfo, weatherInfo, activeTyphoon, addToEncyclopedia, setLastResult, returnWeatherToSunnyAfterCombat, isPaused, setIsLoading, isBattleActive: battleActive, setIsBattleActive: setBattleActive } = useGame();
+  const [keyBindings, setKeyBindings] = useState(getKeyBindings);
   const isMale = player.appearance?.gender !== "feminine";
+
+  useEffect(() => {
+    const syncBindings = (event) => setKeyBindings(event.detail || getKeyBindings());
+    window.addEventListener("typhoon-key-bindings-changed", syncBindings);
+    return () => window.removeEventListener("typhoon-key-bindings-changed", syncBindings);
+  }, []);
   const [position, setPosition] = useState(48);
   const [moving, setMoving] = useState(false);
   const [facing, setFacing] = useState(1);
@@ -637,17 +645,24 @@ export default function GameWorldScene() {
           return;
         }
         if (!battleCommandsReadyRef.current || event.repeat) return;
-        const commands = { z: "fight", x: "guard", a: "heal", s: "special" };
+        const bindings = getKeyBindings();
+        const commands = {
+          [bindings.fight]: "fight",
+          [bindings.guard]: "guard",
+          [bindings.heal]: "heal",
+          [bindings.special]: "special"
+        };
         if (!commands[key]) return;
         event.preventDefault();
         battleCommandHandlerRef.current?.(commands[key]);
         return;
       }
-      if (key !== "a" && key !== "d") return;
+      const bindings = getKeyBindings();
+      if (key !== bindings.moveLeft && key !== bindings.moveRight) return;
       event.preventDefault();
       shiftHeld.current = event.shiftKey;
       if (event.repeat || transitionRef.current !== "idle") return;
-      const direction = key === "d" ? 1 : -1;
+      const direction = key === bindings.moveRight ? 1 : -1;
       stopMovement();
       setFastWalking(event.shiftKey);
       setMoving(true);
@@ -662,7 +677,8 @@ export default function GameWorldScene() {
         setFastWalking(false);
         return;
       }
-      if (event.key.toLowerCase() === "a" || event.key.toLowerCase() === "d") stopMovement();
+      const bindings = getKeyBindings();
+      if (event.key.toLowerCase() === bindings.moveLeft || event.key.toLowerCase() === bindings.moveRight) stopMovement();
     };
 
     const onBlur = () => {
@@ -1006,10 +1022,10 @@ export default function GameWorldScene() {
             </div>
           </div>
           <div className="battle-command-list">
-            <button key={`fight-${battleActionPulse}`} className={battleAction === "fight" ? "is-selected" : ""} onClick={() => executeBattleCommand("fight")}><kbd>Z</kbd><span>たたかう</span></button>
-            <button key={`guard-${battleActionPulse}`} className={battleAction === "guard" ? "is-selected" : ""} onClick={() => executeBattleCommand("guard")}><kbd>X</kbd><span>まもる</span></button>
-            <button key={`heal-${battleActionPulse}`} disabled={displayedSp < currentMaxSp / 3} className={battleAction === "heal" ? "is-selected" : ""} onClick={() => executeBattleCommand("heal")}><kbd>A</kbd><span>回復</span></button>
-            <button key={`special-${battleActionPulse}`} disabled={displayedSp < currentMaxSp} className={battleAction === "special" ? "is-selected" : ""} onClick={() => executeBattleCommand("special")}><kbd>S</kbd><span>必殺技</span></button>
+            <button key={`fight-${battleActionPulse}`} className={battleAction === "fight" ? "is-selected" : ""} onClick={() => executeBattleCommand("fight")}><kbd>{keyBindings.fight.toUpperCase()}</kbd><span>たたかう</span></button>
+            <button key={`guard-${battleActionPulse}`} className={battleAction === "guard" ? "is-selected" : ""} onClick={() => executeBattleCommand("guard")}><kbd>{keyBindings.guard.toUpperCase()}</kbd><span>まもる</span></button>
+            <button key={`heal-${battleActionPulse}`} disabled={displayedSp < currentMaxSp / 3} className={battleAction === "heal" ? "is-selected" : ""} onClick={() => executeBattleCommand("heal")}><kbd>{keyBindings.heal.toUpperCase()}</kbd><span>回復</span></button>
+            <button key={`special-${battleActionPulse}`} disabled={displayedSp < currentMaxSp} className={battleAction === "special" ? "is-selected" : ""} onClick={() => executeBattleCommand("special")}><kbd>{keyBindings.special.toUpperCase()}</kbd><span>必殺技</span></button>
           </div>
         </section>}
       </div>}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useGame } from "../game/context/GameContext";
 import CharacterCutout from "../components/CharacterCutout";
 import SaveSlotsView from "../components/SaveSlotsView";
+import SettingsPanel from "../components/SettingsPanel";
 import StormCanvas from "../components/StormCanvas";
 import "../styles/title-screen.css";
 
@@ -19,6 +20,7 @@ export default function TitleScreenView() {
   const [step, setStep] = useState("press_any_key");
   const [showConfirmReset, setShowConfirmReset] = useState(false);
   const [showLoadSlots, setShowLoadSlots] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   // 任意のキー入力検知（効果音なしでスッとメニューへ）
   useEffect(() => {
@@ -108,13 +110,11 @@ export default function TitleScreenView() {
             className="title-menu-btn anim-1"
             onClick={handleNewGameClick}
           >
-            <div>はじめから</div>
-            <div className="title-menu-sub">はじめから</div>
+            <div>New Game</div>
           </button>
 
           <button className="title-menu-btn anim-2" onClick={() => setShowLoadSlots(true)}>
-            <div>ロードゲーム</div>
-            <div className="title-menu-sub">スロットから選ぶ</div>
+            <div>Load Game</div>
           </button>
 
           {/* Continue は最新のセーブスロットから再開 */}
@@ -123,25 +123,30 @@ export default function TitleScreenView() {
               className="title-menu-btn anim-3"
               onClick={continueGame}
             >
-              <div>つづきから</div>
-              <div className="title-menu-sub">
-                前回のセーブから再開
-              </div>
+              <div>Continue</div>
             </button>
           )}
+
+          <button className="title-menu-btn anim-3" onClick={() => setShowSettings(true)}>
+            <div>Settings</div>
+          </button>
 
           {/* 3. Quit Game */}
           <button
             className={`title-menu-btn ${hasSaveData ? "anim-4" : "anim-3"}`}
             onClick={quitGame}
           >
-            <div>ゲーム終了</div>
-            <div className="title-menu-sub">ゲームを終了する</div>
+            <div>Quit Game</div>
           </button>
         </div>
       )}
 
       {showLoadSlots && <SaveSlotsView mode="load" onClose={() => setShowLoadSlots(false)} />}
+      {showSettings && (
+        <div className="settings-screen-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowSettings(false); }} onClick={(event) => event.stopPropagation()}>
+          <SettingsPanel onClose={() => setShowSettings(false)} />
+        </div>
+      )}
 
       {/* New Game 上書き確認モーダル */}
       {showConfirmReset && (

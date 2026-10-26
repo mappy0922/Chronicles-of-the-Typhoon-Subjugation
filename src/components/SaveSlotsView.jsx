@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useGame } from "../game/context/GameContext";
 import { SoundManager } from "../game/services/SoundManager";
 import "../styles/save-slots.css";
@@ -26,6 +26,22 @@ export default function SaveSlotsView({ mode = "save", onClose }) {
   const wasPausedRef = useRef(isPaused);
   const isSaveMode = mode === "save";
   const selectedData = selectedSlot === null ? null : saveSlots[selectedSlot];
+
+  useEffect(() => {
+    const onKeyDown = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (selectedSlot !== null) {
+        setSelectedSlot(null);
+        if (isSaveMode) setIsPaused(wasPausedRef.current);
+      } else {
+        onClose?.();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [isSaveMode, onClose, selectedSlot, setIsPaused]);
 
   const openConfirmation = (index) => {
     wasPausedRef.current = isPaused;
@@ -67,7 +83,6 @@ export default function SaveSlotsView({ mode = "save", onClose }) {
             <h2 id="save-slots-title">{isSaveMode ? "セーブスロット" : "ロードゲーム"}</h2>
             <p>{isSaveMode ? "保存先のスロットを選んでください（最大10件）" : "再開するスロットを選んでください"}</p>
           </div>
-          <button className="save-slots-close" type="button" onClick={onClose} aria-label="閉じる">×</button>
         </header>
 
         <div className="save-slots-grid">
