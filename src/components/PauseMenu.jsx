@@ -28,7 +28,7 @@ export default function PauseMenu() {
         setScreen("menu");
         return;
       }
-      if (screen === "slots") return;
+      if (screen === "slots" || screen === "loadSlots") return;
       setScreen("menu");
       setIsOpen((open) => {
         setIsPaused(!open);
@@ -73,7 +73,9 @@ export default function PauseMenu() {
   };
 
   if (!canPause || !isOpen) return null;
-  if (screen === "slots") return <SaveSlotsView mode="save" onClose={() => setScreen("menu")} />;
+  if (screen === "slots" || screen === "loadSlots") {
+    return <SaveSlotsView mode={screen === "slots" ? "save" : "load"} onClose={() => setScreen("menu")} />;
+  }
   if (screen === "settings") {
     return (
       <div className="settings-screen-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setScreen("menu"); }}>
@@ -86,14 +88,15 @@ export default function PauseMenu() {
     <div className="pause-menu-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) resumeGame(); }}>
       <section className="pause-menu" role="dialog" aria-modal="true" aria-labelledby="pause-menu-title">
         <>
-          <h2 id="pause-menu-title">メニュー</h2>
+          <h2 id="pause-menu-title">Menu</h2>
           {isCombatActive ? (
-            <button className="btn-ghost" onClick={() => setShowRetireConfirm(true)}>リタイヤ</button>
+            <button className="btn-ghost" onClick={() => setShowRetireConfirm(true)}>Retire</button>
           ) : (
           <>
-            <button className="btn-ghost" onClick={() => setScreen("slots")}>セーブする</button>
-            <button className="btn-ghost" onClick={() => setScreen("settings")}>設定</button>
-            <button className="btn-ghost" onClick={() => setShowTitleConfirm(true)}>タイトルに戻る</button>
+            <button className="btn-ghost" onClick={() => setScreen("slots")}>Save</button>
+            <button className="btn-ghost" onClick={() => setScreen("loadSlots")}>Load</button>
+            <button className="btn-ghost" onClick={() => setScreen("settings")}>Settings</button>
+            <button className="btn-ghost" onClick={() => setShowTitleConfirm(true)}>Title</button>
           </>
           )}
         </>
