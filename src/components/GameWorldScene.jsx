@@ -398,7 +398,7 @@ export default function GameWorldScene() {
       ...MALE_BATTLE_RIGHT_WALK_FRAMES,
       ...MALE_BATTLE_LEFT_WALK_FRAMES,
       "/男性勝利.png",
-      "/victory-female-cutout.png"
+      "/女性勝利.png"
     ];
     frameSources.forEach((src) => {
       const image = new Image();
@@ -1002,7 +1002,7 @@ export default function GameWorldScene() {
         <div className={`strike-player-position ${showVictoryPose ? "is-victorious" : ""}`} style={{ left: `${battlePlayerLeft}%` }}>
           <img
             src={showVictoryPose
-              ? isMale ? "/男性勝利.png" : "/victory-female-cutout.png"
+              ? isMale ? "/男性勝利.png" : "/女性勝利.png"
               : isMale
                 ? moving
                   ? (facing < 0 ? MALE_BATTLE_LEFT_WALK_FRAMES : MALE_BATTLE_RIGHT_WALK_FRAMES)[(walkFrame - 1) % MALE_BATTLE_LEFT_WALK_FRAMES.length]
