@@ -35,7 +35,7 @@
 .is-battle-active .world-player { visibility:hidden; }
 .strike-encounter { position:absolute; z-index:12; inset:0; pointer-events:none; }
 .strike-player-position, .typhoon-strike-arrival { position:absolute; bottom:20%; width:clamp(120px,18vw,220px); height:clamp(100px,21vh,190px); display:flex; justify-content:center; align-items:flex-end; }
-.strike-player-position { left:24%; transform:translateX(-50%); }
+.strike-player-position { left:24%; transform:translateX(-50%); transition:left .1s linear; }
 .strike-player-position img { display:block; width:auto; height:100%; max-width:100%; object-fit:contain; filter:drop-shadow(0 5px 3px rgba(0,0,0,.3)); }
 .strike-player-position.is-victorious img { height:120%; max-width:none; }
 .typhoon-strike-arrival { right:-8%; width:clamp(320px,62vw,760px); height:clamp(280px,68vh,660px); cursor:default; animation:typhoon-strike-enter 8s cubic-bezier(.18,.7,.28,1) both; }
@@ -63,6 +63,10 @@
 .battle-command-list button.is-selected { color:#f0faff; border-color:rgba(125,211,252,.9); background:linear-gradient(100deg,rgba(8,145,178,.65),rgba(14,116,144,.32)); box-shadow:0 0 11px rgba(34,211,238,.56),inset 0 0 8px rgba(125,211,252,.22); text-shadow:0 0 7px rgba(186,230,253,.7); animation:battle-command-press .2s ease-out; }
 .battle-command-list button:active { transform:translateY(1px) scale(.97); }
 .battle-command-list button:disabled { opacity:.36; cursor:not-allowed; }
+.battle-command-list button.battle-special-command { min-height:22px; gap:7px; border-color:rgba(253,230,138,.5); background:linear-gradient(90deg,rgba(202,138,4,.72) 0 var(--special-charge-progress),rgba(255,255,255,.06) var(--special-charge-progress) 100%); transition:background .12s linear,border-color .12s ease,transform .12s ease; }
+.battle-command-list button.battle-special-command:disabled { opacity:1; color:rgba(248,250,252,.82); }
+.battle-command-list button.battle-special-command:disabled kbd { color:#fef08a; }
+.battle-command-list button.battle-special-command:not(:disabled) { border-color:#fde68a; color:#fff; box-shadow:0 0 8px rgba(250,204,21,.32); }
 .battle-command-list kbd { display:inline-flex; min-width:15px; height:16px; align-items:center; justify-content:center; color:#bae6fd; border:0; border-radius:0; background:transparent; font:800 .68rem ui-monospace,monospace; }
 .battle-command-list button:disabled kbd { color:#94a3b8; background:transparent; }
 .boss-character-name { position:absolute; z-index:3; top:-72px; left:50%; translate:-50% 0; color:#fff; font-family:"FOT - レゲェ Std B","FOT-レゲエ Std B",sans-serif; font-size:.9rem; font-weight:500; line-height:1.2; white-space:nowrap; text-shadow:0 1px 5px rgba(0,0,0,.85); pointer-events:none; }

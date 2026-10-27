@@ -9,11 +9,14 @@ export const KEY_BINDING_DEFINITIONS = [
   { id: "special", label: "必殺技", group: "戦闘" }
 ];
 
-const DEFAULTS = { moveLeft: "a", moveRight: "d", fight: "z", guard: "x", heal: "a", special: "s" };
+const DEFAULTS = { moveLeft: "a", moveRight: "d", fight: "l", guard: "k", heal: "m", special: "n" };
+const PREVIOUS_DEFAULTS = { moveLeft: "a", moveRight: "d", fight: "z", guard: "x", heal: "a", special: "s" };
 
 export function getKeyBindings() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    const hasOnlyPreviousDefaults = Object.keys(PREVIOUS_DEFAULTS).every((key) => saved[key] === PREVIOUS_DEFAULTS[key]);
+    if (hasOnlyPreviousDefaults) return { ...DEFAULTS };
     return { ...DEFAULTS, ...Object.fromEntries(Object.keys(DEFAULTS).map((key) => [key, typeof saved[key] === "string" ? saved[key] : DEFAULTS[key]])) };
   } catch {
     return { ...DEFAULTS };

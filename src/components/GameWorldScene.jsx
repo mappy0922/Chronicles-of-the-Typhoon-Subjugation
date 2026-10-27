@@ -95,6 +95,18 @@ const MALE_LEFT_WALK_FRAMES = [
   "/left_2.png",
   "/left_idle.png"
 ];
+const MALE_BATTLE_RIGHT_WALK_FRAMES = [
+  "/right_man_battle1.png",
+  "/right_man_battle_idle.png",
+  "/right_man_battle2.png",
+  "/right_man_battle_idle.png"
+];
+const MALE_BATTLE_LEFT_WALK_FRAMES = [
+  "/left_man_battle1.png",
+  "/left_man_battle_idle.png",
+  "/left_man_battle2.png",
+  "/left_man_battle_idle.png"
+];
 const FEMALE_RIGHT_WALK_FRAMES = [
   "/woman_right_1.png",
   "/woman_right_idle.png",
@@ -249,6 +261,10 @@ export default function GameWorldScene() {
   const { player, setPlayer, gainExp, addMoney, setIsPaused, computedStats, proximityInfo, weatherInfo, activeTyphoon, addToEncyclopedia, setLastResult, returnWeatherToSunnyAfterCombat, isPaused, setIsLoading, isBattleActive: battleActive, setIsBattleActive: setBattleActive } = useGame();
   const [keyBindings, setKeyBindings] = useState(getKeyBindings);
   const isMale = player.appearance?.gender !== "feminine";
+  const isMaleRef = useRef(isMale);
+  isMaleRef.current = isMale;
+  const battleActiveRef = useRef(battleActive);
+  battleActiveRef.current = battleActive;
 
   useEffect(() => {
     const syncBindings = (event) => setKeyBindings(event.detail || getKeyBindings());
@@ -256,6 +272,8 @@ export default function GameWorldScene() {
     return () => window.removeEventListener("typhoon-key-bindings-changed", syncBindings);
   }, []);
   const [position, setPosition] = useState(48);
+  const [battlePlayerLeft, setBattlePlayerLeft] = useState(24);
+  const [battlePlayerHasMoved, setBattlePlayerHasMoved] = useState(false);
   const [moving, setMoving] = useState(false);
   const [facing, setFacing] = useState(1);
   const [fastWalking, setFastWalking] = useState(false);
@@ -277,6 +295,8 @@ export default function GameWorldScene() {
   const [battleAction, setBattleAction] = useState(null);
   const [battleActionPulse, setBattleActionPulse] = useState(0);
   const [spRegenProgress, setSpRegenProgress] = useState(0);
+  const [specialChargeProgress, setSpecialChargeProgress] = useState(0);
+  const [specialChargeCycle, setSpecialChargeCycle] = useState(0);
   const [bossHitEffect, setBossHitEffect] = useState(null);
   const [bossDefeating, setBossDefeating] = useState(false);
   const [bossFullyDefeated, setBossFullyDefeated] = useState(false);
@@ -286,6 +306,7 @@ export default function GameWorldScene() {
   const adminStrikeTimerRef = useRef(null);
   const mapIndexRef = useRef(1);
   const positionRef = useRef(48);
+  const battlePlayerLeftRef = useRef(24);
   const transitionRef = useRef("idle");
   const lastMapTransitionWasTyphoonRef = useRef(false);
   const strikeActiveRef = useRef(false);
@@ -304,11 +325,13 @@ export default function GameWorldScene() {
   const bossGaugeChargeRef = useRef(0);
   const bossGaugeTrailRef = useRef(bossGaugeTrail);
   const spRegenProgressRef = useRef(0);
+  const specialChargeProgressRef = useRef(0);
   const pausedRef = useRef(isPaused);
   pausedRef.current = isPaused;
   bossGaugeChargeRef.current = bossGaugeCharge;
   bossGaugeTrailRef.current = bossGaugeTrail;
   positionRef.current = position;
+  battlePlayerLeftRef.current = battlePlayerLeft;
   const bossGaugeProgress = Math.max(0, bossGaugeCharge - bossGaugeDamage);
   const grass = useMemo(() => makeGrass(1200), []);
 
@@ -371,7 +394,9 @@ export default function GameWorldScene() {
       ...FEMALE_RIGHT_WALK_FRAMES,
       ...FEMALE_LEFT_WALK_FRAMES,
       "/right_idle.png",
-      "/idle-cutout.png"
+      "/idle-cutout.png",
+      ...MALE_BATTLE_RIGHT_WALK_FRAMES,
+      ...MALE_BATTLE_LEFT_WALK_FRAMES
     ];
     frameSources.forEach((src) => {
       const image = new Image();
@@ -381,19 +406,21 @@ export default function GameWorldScene() {
 
   useEffect(() => {
     if (!moving || isPaused) return undefined;
-    const frameCount = isMale && facing > 0
-      ? MALE_RIGHT_WALK_FRAMES.length
-      : isMale && facing < 0
-        ? MALE_LEFT_WALK_FRAMES.length
+    const frameCount = battleActive && isMale
+      ? MALE_BATTLE_RIGHT_WALK_FRAMES.length
+      : isMale && facing > 0
+        ? MALE_RIGHT_WALK_FRAMES.length
+        : isMale && facing < 0
+          ? MALE_LEFT_WALK_FRAMES.length
         : facing > 0
           ? FEMALE_RIGHT_WALK_FRAMES.length
           : FEMALE_LEFT_WALK_FRAMES.length;
     setWalkFrame(1);
     const frameTimer = window.setInterval(() => {
       setWalkFrame((frame) => frame % frameCount + 1);
-    }, fastWalking ? 220 : 300);
+    }, battleActive && isMale ? 240 : fastWalking ? 220 : 300);
     return () => window.clearInterval(frameTimer);
-  }, [moving, fastWalking, facing, isMale, isPaused]);
+  }, [moving, fastWalking, facing, isMale, isPaused, battleActive]);
 
   const startMapTransition = (nextMap, entryPosition, onFadeIn, { typhoon = false } = {}) => {
     if (transitionRef.current !== "idle" || nextMap < 0 || nextMap >= HOUSE_LAYOUTS.length) return;
@@ -492,11 +519,11 @@ export default function GameWorldScene() {
     }
     const maxSp = player.maxSp || 100;
     const segmentSize = maxSp / 3;
-    let cycleStartedAt = performance.now() - spRegenProgressRef.current * 30_000;
+    let cycleStartedAt = performance.now() - spRegenProgressRef.current * 20_000;
     let lastUpdate = 0;
     let frameId;
     const recharge = (timestamp) => {
-      const progress = Math.min(1, (timestamp - cycleStartedAt) / 30_000);
+      const progress = Math.min(1, (timestamp - cycleStartedAt) / 20_000);
       if (timestamp - lastUpdate >= 1000 / 30 || progress === 1) {
         spRegenProgressRef.current = progress;
         setSpRegenProgress(progress);
@@ -513,6 +540,24 @@ export default function GameWorldScene() {
     frameId = window.requestAnimationFrame(recharge);
     return () => window.cancelAnimationFrame(frameId);
   }, [battleCommandsReady, player.currentSp, player.maxSp, setPlayer, isPaused]);
+
+  useEffect(() => {
+    if (isPaused || !battleCommandsReady || specialChargeProgressRef.current >= 1) return undefined;
+    let startedAt = performance.now() - specialChargeProgressRef.current * 180_000;
+    let lastUpdate = 0;
+    let frameId;
+    const chargeSpecial = (timestamp) => {
+      const progress = Math.min(1, (timestamp - startedAt) / 180_000);
+      if (timestamp - lastUpdate >= 1000 / 30 || progress === 1) {
+        specialChargeProgressRef.current = progress;
+        setSpecialChargeProgress(progress * 100);
+        lastUpdate = timestamp;
+      }
+      if (progress < 1) frameId = window.requestAnimationFrame(chargeSpecial);
+    };
+    frameId = window.requestAnimationFrame(chargeSpecial);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [battleCommandsReady, isPaused, specialChargeCycle]);
 
   useEffect(() => () => {
     window.clearInterval(battleActionTimeoutRef.current);
@@ -538,7 +583,7 @@ export default function GameWorldScene() {
     const spPerSegment = maxSp / 3;
     const availableSp = Math.min(maxSp, player.currentSp + spPerSegment * spRegenProgressRef.current);
     if (command === "heal" && availableSp < spPerSegment) return;
-    if (command === "special" && availableSp < maxSp) return;
+    if (command === "special" && specialChargeProgressRef.current < 1) return;
     setBattleAction(command);
     setBattleActionPulse((pulse) => pulse + 1);
     window.clearInterval(battleActionTimeoutRef.current);
@@ -585,12 +630,9 @@ export default function GameWorldScene() {
       }));
     }
     if (command === "special") {
-      setSpRegenProgress(0);
-      spRegenProgressRef.current = 0;
-      setPlayer((current) => ({
-        ...current,
-        currentSp: 0
-      }));
+      specialChargeProgressRef.current = 0;
+      setSpecialChargeProgress(0);
+      setSpecialChargeCycle((cycle) => cycle + 1);
       attackBoss(attackPower * 3);
     }
   };
@@ -606,11 +648,23 @@ export default function GameWorldScene() {
     };
 
     const moveOneStep = (direction) => {
-      if (pausedRef.current || movementLockedRef.current || transitionRef.current !== "idle") {
+      if (pausedRef.current || (movementLockedRef.current && !battleActiveRef.current) || transitionRef.current !== "idle") {
         stopMovement();
         return;
       }
       setFacing(direction);
+      if (battleActiveRef.current) {
+        if (!isMaleRef.current) {
+          stopMovement();
+          return;
+        }
+        setBattlePlayerHasMoved(true);
+        const battleStep = 2.6;
+        const nextLeft = Math.max(8, Math.min(42, battlePlayerLeftRef.current + direction * battleStep));
+        battlePlayerLeftRef.current = nextLeft;
+        setBattlePlayerLeft(nextLeft);
+        return;
+      }
       const stepSize = shiftHeld.current ? 2.6 : 1.5;
       const nextPosition = Math.max(0, Math.min(100, positionRef.current + direction * stepSize));
       positionRef.current = nextPosition;
@@ -644,8 +698,19 @@ export default function GameWorldScene() {
           else if (event.key === "ArrowRight") battleFocusHandlerRef.current?.("right");
           return;
         }
-        if (!battleCommandsReadyRef.current || event.repeat) return;
         const bindings = getKeyBindings();
+        if (battleActiveRef.current && isMaleRef.current && (key === bindings.moveLeft || key === bindings.moveRight)) {
+          event.preventDefault();
+          if (event.repeat || transitionRef.current !== "idle") return;
+          const direction = key === bindings.moveRight ? 1 : -1;
+          stopMovement();
+          setFastWalking(false);
+          setMoving(true);
+          moveOneStep(direction);
+          movementInterval.current = window.setInterval(() => moveOneStep(direction), 100);
+          return;
+        }
+        if (!battleCommandsReadyRef.current || event.repeat) return;
         const commands = {
           [bindings.fight]: "fight",
           [bindings.guard]: "guard",
@@ -765,6 +830,8 @@ export default function GameWorldScene() {
       setBossGaugeTrail(0);
       setBossGaugeCharging(false);
       setBattleCommandsReady(false);
+      specialChargeProgressRef.current = 0;
+      setSpecialChargeProgress(0);
       battleCommandsReadyRef.current = false;
       setBattleAction(null);
       return;
@@ -779,6 +846,14 @@ export default function GameWorldScene() {
     setBossDefeating(false);
     setBossFullyDefeated(false);
     setShowVictoryPose(false);
+      battlePlayerLeftRef.current = 24;
+      setBattlePlayerLeft(24);
+      setBattlePlayerHasMoved(false);
+    setPlayer((current) => ({ ...current, currentSp: current.maxSp || 100 }));
+    spRegenProgressRef.current = 0;
+    setSpRegenProgress(0);
+    specialChargeProgressRef.current = 0;
+    setSpecialChargeProgress(0);
     setBattleActive(true);
     if (movementInterval.current) {
       window.clearInterval(movementInterval.current);
@@ -922,11 +997,17 @@ export default function GameWorldScene() {
       {(mapTransition === "loading" || mapTransition === "fade-in") && <div className={`map-loading-indicator ${mapTransition === "fade-in" ? "is-fading" : ""}`}>ロード中...</div>}
       {(mapTransition === "fade-out" || mapTransition === "loading") && <div className={`map-transition-curtain ${mapTransition === "fade-out" ? "is-fading-out" : ""}`} aria-hidden="true" />}
       {battleActive && typhoonAppearance && <div className="strike-encounter" aria-label="主人公と台風の対峙">
-        <div className={`strike-player-position ${showVictoryPose ? "is-victorious" : ""}`}>
+        <div className={`strike-player-position ${showVictoryPose ? "is-victorious" : ""}`} style={{ left: `${battlePlayerLeft}%` }}>
           <img
             src={showVictoryPose
               ? isMale ? "/victory-male-cutout.png" : "/victory-female-cutout.png"
-              : isMale ? "/man_battle_idle.png" : "/woman_battle_idle.png"}
+              : isMale
+                ? moving
+                  ? (facing < 0 ? MALE_BATTLE_LEFT_WALK_FRAMES : MALE_BATTLE_RIGHT_WALK_FRAMES)[(walkFrame - 1) % MALE_BATTLE_LEFT_WALK_FRAMES.length]
+                  : battlePlayerHasMoved
+                    ? facing < 0 ? "/left_man_battle_idle.png" : "/right_man_battle_idle.png"
+                    : "/man_battle_idle.png"
+                : "/woman_battle_idle.png"}
             alt={showVictoryPose ? "勝利ポーズ" : isMale ? "男性剣士" : "女性剣士"}
           />
         </div>
@@ -1004,7 +1085,6 @@ export default function GameWorldScene() {
           </>}
         </div>
         {battleCommandsReady && <section className="battle-command-panel" aria-label="Battle commands">
-          <div className="battle-focus-hint">{"Shift + \u2191 / \u2193 : \u90e8\u4f4d\u5207\u66ff\u3000\u624b\u306f \u2190 / \u2192"}</div>
           <div className="battle-status-row">
             <div className="battle-player-portrait" aria-hidden="true">
               <img src={isMale ? "/player-male-normalized.png" : "/player-female-normalized.png"} alt="" />
@@ -1025,7 +1105,17 @@ export default function GameWorldScene() {
             <button key={`fight-${battleActionPulse}`} className={battleAction === "fight" ? "is-selected" : ""} onClick={() => executeBattleCommand("fight")}><kbd>{keyBindings.fight.toUpperCase()}</kbd><span>たたかう</span></button>
             <button key={`guard-${battleActionPulse}`} className={battleAction === "guard" ? "is-selected" : ""} onClick={() => executeBattleCommand("guard")}><kbd>{keyBindings.guard.toUpperCase()}</kbd><span>まもる</span></button>
             <button key={`heal-${battleActionPulse}`} disabled={displayedSp < currentMaxSp / 3} className={battleAction === "heal" ? "is-selected" : ""} onClick={() => executeBattleCommand("heal")}><kbd>{keyBindings.heal.toUpperCase()}</kbd><span>回復</span></button>
-            <button key={`special-${battleActionPulse}`} disabled={displayedSp < currentMaxSp} className={battleAction === "special" ? "is-selected" : ""} onClick={() => executeBattleCommand("special")}><kbd>{keyBindings.special.toUpperCase()}</kbd><span>必殺技</span></button>
+            <button
+              key={`special-${battleActionPulse}`}
+              disabled={specialChargeProgress < 100}
+              className={`battle-special-command${battleAction === "special" ? " is-selected" : ""}`}
+              style={{ "--special-charge-progress": `${specialChargeProgress}%` }}
+              aria-label={`必殺技、チャージ${Math.round(specialChargeProgress)}%`}
+              onClick={() => executeBattleCommand("special")}
+            >
+              <kbd>{keyBindings.special.toUpperCase()}</kbd>
+              <span>必殺技</span>
+            </button>
           </div>
         </section>}
       </div>}
