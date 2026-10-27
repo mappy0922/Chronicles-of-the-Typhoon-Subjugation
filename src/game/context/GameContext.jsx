@@ -41,7 +41,7 @@ const DEFAULT_PLAYER = {
   baseDef: 20,
   baseSpd: 30,
   equippedWeapon: WEAPONS[0], // 銅剣
-  equippedArmor: ARMORS[0],  // 防風着
+  equippedArmor: { ...ARMORS[0], hpBonus: 0 },  // 初期状態では防具のHP補正を加算しない
   inventory: {
     wind_net: 2,
     sandbag: 2,
@@ -62,6 +62,7 @@ const createInitialPlayer = () => ({
   ownedArmors: [...DEFAULT_PLAYER.ownedArmors]
 });
 const maxHpForLevel = (level) => 700 + (Math.max(1, Number(level) || 1) - 1) * 50;
+const armorHpBonus = (armor) => armor?.id === "cloth_armor" ? 0 : (Number(armor?.hpBonus) || 0);
 
 const createEmptySaveSlots = () => Array.from({ length: MAX_SAVE_SLOTS }, () => null);
 
@@ -208,7 +209,7 @@ export function GameProvider({ children }) {
     atk: player.baseAtk + (player.equippedWeapon?.attack || 0),
     def: player.baseDef + (player.equippedWeapon?.defense || 0) + (player.equippedArmor?.defense || 0),
     spd: player.baseSpd + (player.equippedWeapon?.speed || 0),
-    maxHp: player.maxHp + (player.equippedArmor?.hpBonus || 0)
+    maxHp: player.maxHp + armorHpBonus(player.equippedArmor)
   };
 
   useEffect(() => {
@@ -278,7 +279,8 @@ export function GameProvider({ children }) {
     if (parsed.player) {
       const restoredPlayer = { ...DEFAULT_PLAYER, ...parsed.player, appearance: { ...DEFAULT_APPEARANCE, ...parsed.player.appearance } };
       const maxHp = maxHpForLevel(restoredPlayer.level);
-      setPlayer({ ...restoredPlayer, maxHp, currentHp: Math.min(restoredPlayer.currentHp ?? maxHp, maxHp) });
+      const effectiveMaxHp = maxHp + armorHpBonus(restoredPlayer.equippedArmor);
+      setPlayer({ ...restoredPlayer, maxHp, currentHp: Math.min(restoredPlayer.currentHp ?? effectiveMaxHp, effectiveMaxHp) });
     }
     if (parsed.farmPlots) setFarmPlots(parsed.farmPlots);
     if (parsed.defenseActions) setDefenseActions(parsed.defenseActions);
@@ -634,7 +636,7 @@ export function GameProvider({ children }) {
       }
 
       const maxHp = maxHpForLevel(level);
-      const computedMaxHp = maxHp + (prev.equippedArmor?.hpBonus || 0);
+      const computedMaxHp = maxHp + armorHpBonus(prev.equippedArmor);
 
       return {
         ...prev,

@@ -926,7 +926,7 @@ export default function GameWorldScene() {
           <img
             src={showVictoryPose
               ? isMale ? "/victory-male-cutout.png" : "/victory-female-cutout.png"
-              : isMale ? "/player-male-normalized.png" : "/player-female-normalized.png"}
+              : isMale ? "/man_battle_idle.png" : "/woman_battle_idle.png"}
             alt={showVictoryPose ? "勝利ポーズ" : isMale ? "男性剣士" : "女性剣士"}
           />
         </div>
