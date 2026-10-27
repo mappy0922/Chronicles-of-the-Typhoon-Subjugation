@@ -107,6 +107,18 @@ const MALE_BATTLE_LEFT_WALK_FRAMES = [
   "/left_man_battle2.png",
   "/left_man_battle_idle.png"
 ];
+const FEMALE_BATTLE_RIGHT_WALK_FRAMES = [
+  "/right_woman_battle1.png",
+  "/right_woman_battle_idle.png",
+  "/right_woman_battle2.png",
+  "/right_woman_battle_idle.png"
+];
+const FEMALE_BATTLE_LEFT_WALK_FRAMES = [
+  "/left_woman_battle1.png",
+  "/left_woman_battle_idle.png",
+  "/left_woman_battle2.png",
+  "/left_woman_battle_idle.png"
+];
 const FEMALE_RIGHT_WALK_FRAMES = [
   "/woman_right_1.png",
   "/woman_right_idle.png",
@@ -261,8 +273,6 @@ export default function GameWorldScene() {
   const { player, setPlayer, gainExp, addMoney, setIsPaused, computedStats, proximityInfo, weatherInfo, activeTyphoon, addToEncyclopedia, setLastResult, returnWeatherToSunnyAfterCombat, isPaused, setIsLoading, isBattleActive: battleActive, setIsBattleActive: setBattleActive } = useGame();
   const [keyBindings, setKeyBindings] = useState(getKeyBindings);
   const isMale = player.appearance?.gender !== "feminine";
-  const isMaleRef = useRef(isMale);
-  isMaleRef.current = isMale;
   const battleActiveRef = useRef(battleActive);
   battleActiveRef.current = battleActive;
 
@@ -397,6 +407,8 @@ export default function GameWorldScene() {
       "/idle-cutout.png",
       ...MALE_BATTLE_RIGHT_WALK_FRAMES,
       ...MALE_BATTLE_LEFT_WALK_FRAMES,
+      ...FEMALE_BATTLE_RIGHT_WALK_FRAMES,
+      ...FEMALE_BATTLE_LEFT_WALK_FRAMES,
       "/男性勝利.png",
       "/女性勝利.png"
     ];
@@ -408,8 +420,8 @@ export default function GameWorldScene() {
 
   useEffect(() => {
     if (!moving || isPaused) return undefined;
-    const frameCount = battleActive && isMale
-      ? MALE_BATTLE_RIGHT_WALK_FRAMES.length
+    const frameCount = battleActive
+      ? isMale ? MALE_BATTLE_RIGHT_WALK_FRAMES.length : FEMALE_BATTLE_RIGHT_WALK_FRAMES.length
       : isMale && facing > 0
         ? MALE_RIGHT_WALK_FRAMES.length
         : isMale && facing < 0
@@ -420,7 +432,7 @@ export default function GameWorldScene() {
     setWalkFrame(1);
     const frameTimer = window.setInterval(() => {
       setWalkFrame((frame) => frame % frameCount + 1);
-    }, battleActive && isMale ? 240 : fastWalking ? 220 : 300);
+    }, battleActive ? 240 : fastWalking ? 220 : 300);
     return () => window.clearInterval(frameTimer);
   }, [moving, fastWalking, facing, isMale, isPaused, battleActive]);
 
@@ -656,10 +668,6 @@ export default function GameWorldScene() {
       }
       setFacing(direction);
       if (battleActiveRef.current) {
-        if (!isMaleRef.current) {
-          stopMovement();
-          return;
-        }
         setBattlePlayerHasMoved(true);
         const battleStep = 2.6;
         const nextLeft = Math.max(8, Math.min(42, battlePlayerLeftRef.current + direction * battleStep));
@@ -701,7 +709,7 @@ export default function GameWorldScene() {
           return;
         }
         const bindings = getKeyBindings();
-        if (battleActiveRef.current && isMaleRef.current && (key === bindings.moveLeft || key === bindings.moveRight)) {
+        if (battleActiveRef.current && (key === bindings.moveLeft || key === bindings.moveRight)) {
           event.preventDefault();
           if (event.repeat || transitionRef.current !== "idle") return;
           const direction = key === bindings.moveRight ? 1 : -1;
@@ -1009,7 +1017,11 @@ export default function GameWorldScene() {
                   : battlePlayerHasMoved
                     ? facing < 0 ? "/left_man_battle_idle.png" : "/right_man_battle_idle.png"
                     : "/man_battle_idle.png"
-                : "/woman_battle_idle.png"}
+                : moving
+                  ? (facing < 0 ? FEMALE_BATTLE_LEFT_WALK_FRAMES : FEMALE_BATTLE_RIGHT_WALK_FRAMES)[(walkFrame - 1) % FEMALE_BATTLE_LEFT_WALK_FRAMES.length]
+                  : battlePlayerHasMoved
+                    ? facing < 0 ? "/left_woman_battle_idle.png" : "/right_woman_battle_idle.png"
+                    : "/woman_battle_idle.png"}
             alt={showVictoryPose ? "勝利ポーズ" : isMale ? "男性剣士" : "女性剣士"}
           />
         </div>
