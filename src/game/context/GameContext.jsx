@@ -33,8 +33,8 @@ const DEFAULT_PLAYER = {
   exp: 0,
   nextExp: 100,
   money: 500,
-  maxHp: 500,
-  currentHp: 550,
+  maxHp: 700,
+  currentHp: 700,
   maxSp: 100,
   currentSp: 100,
   baseAtk: 40,
@@ -61,7 +61,7 @@ const createInitialPlayer = () => ({
   ownedWeapons: [...DEFAULT_PLAYER.ownedWeapons],
   ownedArmors: [...DEFAULT_PLAYER.ownedArmors]
 });
-const maxHpForLevel = (level) => 500 + (Math.max(1, Number(level) || 1) - 1) * 50;
+const maxHpForLevel = (level) => 700 + (Math.max(1, Number(level) || 1) - 1) * 50;
 
 const createEmptySaveSlots = () => Array.from({ length: MAX_SAVE_SLOTS }, () => null);
 
