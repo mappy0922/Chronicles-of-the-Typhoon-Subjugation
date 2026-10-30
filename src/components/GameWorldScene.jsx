@@ -2,13 +2,13 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from "re
 import { useGame } from "../game/context/GameContext";
 import StormCanvas from "./StormCanvas";
 import VictoryRewardView from "./VictoryRewardView";
-import { getKeyBindings } from "../game/services/KeyBindings";
+import { formatKeyBinding, getBindingKeys, getKeyBindings, getPrimaryBinding, matchesKeyBinding } from "../game/services/KeyBindings";
 import "../styles/game-world.css";
 
 const getTyphoonCharacter = (intensity) => {
   if (intensity <= 0.2) return ["/typhoon-breeze-cutout-v4.png", "\u305D\u3088\u98A8\u578B"];
   if (intensity <= 0.5) return ["/typhoon-rain-cutout-v4.png", "\u8C6A\u96E8\u578B"];
-  if (intensity <= 0.84) return ["/typhoon-gale-cutout-v4.png", "\u66B4\u98A8\u578B"];
+  if (intensity <= 0.84) return ["/typhoon-gale-cutout-v5.png", "\u66B4\u98A8\u578B"];
   if (intensity <= 0.94) return ["/typhoon-storm-cutout-v4.png", "\u5D50\u578B"];
   return ["/typhoon-super-cutout-v4.png", "\u8D85\u5927\u578B\u578B"];
 };
@@ -27,8 +27,8 @@ const FOCUS_TARGETS = [
   { id: "foot", label: "\u8db3", x: 50, y: 91 }
 ];
 const FOCUS_MARK_OFFSETS = {
-  breeze: { eyes: { y: 2 }, foot: { x: 1 } },
-  rain: { all: { x: -2, y: 2 } },
+  breeze: { eyes: { x: -5, y: 13 }, foot: { x: 6 } },
+  rain: { all: { x: -2, y: 2 }, eyes: { x: -14, y: 5 }, rightHand: { x: 4, y: -4 } },
   large: { all: { x: -2 } },
   shared: { eyes: { x: -2 }, leftHand: { x: -2 } }
 };
@@ -38,7 +38,8 @@ const getAdjustedFocusTarget = (targetId, typhoonType, handSide = "right") => {
   const baseTarget = FOCUS_TARGETS.find((target) => target.id === (isHand ? "hand" : targetId)) || FOCUS_TARGETS[0];
   let x = isHand ? selectedHandSide === "right" ? 76 : 24 : baseTarget.x;
   let y = baseTarget.y;
-  const typeOffset = FOCUS_MARK_OFFSETS[typhoonType]?.[baseTarget.id] || FOCUS_MARK_OFFSETS[typhoonType]?.all;
+  const typeOffsetKey = isHand && selectedHandSide === "right" ? "rightHand" : baseTarget.id;
+  const typeOffset = FOCUS_MARK_OFFSETS[typhoonType]?.[typeOffsetKey] || FOCUS_MARK_OFFSETS[typhoonType]?.[baseTarget.id] || FOCUS_MARK_OFFSETS[typhoonType]?.all;
   const sharedOffset = FOCUS_MARK_OFFSETS.shared[baseTarget.id === "hand" && selectedHandSide === "left" ? "leftHand" : baseTarget.id];
   x += (typeOffset?.x || 0) + (sharedOffset?.x || 0);
   y += (typeOffset?.y || 0) + (sharedOffset?.y || 0);
@@ -669,8 +670,8 @@ export default function GameWorldScene() {
       setFacing(direction);
       if (battleActiveRef.current) {
         setBattlePlayerHasMoved(true);
-        const battleStep = 2.6;
-        const nextLeft = Math.max(8, Math.min(42, battlePlayerLeftRef.current + direction * battleStep));
+        const battleStep = 3.6;
+        const nextLeft = Math.max(8, Math.min(90, battlePlayerLeftRef.current + direction * battleStep));
         battlePlayerLeftRef.current = nextLeft;
         setBattlePlayerLeft(nextLeft);
         return;
@@ -690,72 +691,131 @@ export default function GameWorldScene() {
 
     const onKeyDown = (event) => {
       if (pausedRef.current) return;
-      if (event.key === "Shift") {
+      if (event.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
+      const bindings = getKeyBindings();
+      if (matchesKeyBinding(bindings, "shiftModifier", event)) {
+        event.preventDefault();
+        if (!event.repeat) {
+          shiftHeld.current = true;
+          if (movementLockedRef.current) setFocusModifierHeld(true);
+          else setFastWalking(true);
+        }
+        return;
+      }
+      const command = ["fight", "guard", "heal", "special"].find((action) => matchesKeyBinding(bindings, action, event));
+      const moveLeft = matchesKeyBinding(bindings, "moveLeft", event);
+      const moveRight = matchesKeyBinding(bindings, "moveRight", event);
+      if (movementLockedRef.current) {
+        if (command) {
+          event.preventDefault();
+          if (event.key === "Escape") event.stopImmediatePropagation();
+          if (!event.repeat && battleActiveRef.current && battleCommandsReadyRef.current) battleCommandHandlerRef.current?.(command);
+          return;
+        }
+        if (battleActiveRef.current && (moveLeft || moveRight)) {
+          event.preventDefault();
+          if (event.key === "Escape") event.stopImmediatePropagation();
+          if (event.repeat || transitionRef.current !== "idle") return;
+          const direction = moveRight ? 1 : -1;
+          stopMovement();
+          setFastWalking(false);
+          setMoving(true);
+          moveOneStep(direction);
+          movementInterval.current = window.setInterval(() => moveOneStep(direction), 80);
+          return;
+        }
+        if (event.key.startsWith("Arrow")) {
+          event.preventDefault();
+          if (event.repeat) return;
+          if (shiftHeld.current && event.key === "ArrowUp") battleFocusHandlerRef.current?.(-1);
+          else if (shiftHeld.current && event.key === "ArrowDown") battleFocusHandlerRef.current?.(1);
+          else if (event.key === "ArrowLeft") battleFocusHandlerRef.current?.("left");
+          else if (event.key === "ArrowRight") battleFocusHandlerRef.current?.("right");
+          return;
+        }
+        return;
+      }
+      if (moveLeft || moveRight) {
+        event.preventDefault();
+        if (event.key === "Escape") event.stopImmediatePropagation();
+        if (event.repeat || transitionRef.current !== "idle") return;
+        const direction = moveRight ? 1 : -1;
+        stopMovement();
+        setFastWalking(shiftHeld.current);
+        setMoving(true);
+        moveOneStep(direction);
+        movementInterval.current = window.setInterval(() => moveOneStep(direction), 100);
+        return;
+      }
+    };
+
+    const onKeyUp = (event) => {
+      const bindings = getKeyBindings();
+      if (matchesKeyBinding(bindings, "moveLeft", event) || matchesKeyBinding(bindings, "moveRight", event)) stopMovement();
+      if (matchesKeyBinding(bindings, "shiftModifier", event)) {
+        shiftHeld.current = false;
+        setFocusModifierHeld(false);
+        setFastWalking(false);
+      }
+    };
+
+    const mouseBindingForEvent = (event) => ({ 0: "mouse:left", 1: "mouse:middle", 2: "mouse:right" })[event.button];
+    const onMouseDown = (event) => {
+      if (pausedRef.current || (event.target instanceof Element && event.target.closest(".battle-command-panel"))) return;
+      const mouseBinding = mouseBindingForEvent(event);
+      if (!mouseBinding) return;
+      const bindings = getKeyBindings();
+      if (getBindingKeys(bindings, "shiftModifier").includes(mouseBinding)) {
         shiftHeld.current = true;
         if (movementLockedRef.current) setFocusModifierHeld(true);
         else setFastWalking(true);
         return;
       }
-      if (event.target instanceof HTMLElement && ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) return;
-      const key = event.key.toLowerCase();
+      const moveLeft = getBindingKeys(bindings, "moveLeft").includes(mouseBinding);
+      const moveRight = getBindingKeys(bindings, "moveRight").includes(mouseBinding);
       if (movementLockedRef.current) {
-        if (event.key.startsWith("Arrow")) {
+        if (!battleActiveRef.current) return;
+        const command = ["fight", "guard", "heal", "special"].find((action) => getBindingKeys(bindings, action).includes(mouseBinding));
+        if (command && battleCommandsReadyRef.current) {
           event.preventDefault();
-          if (event.repeat) return;
-          if (event.shiftKey && event.key === "ArrowUp") battleFocusHandlerRef.current?.(-1);
-          else if (event.shiftKey && event.key === "ArrowDown") battleFocusHandlerRef.current?.(1);
-          else if (event.key === "ArrowLeft") battleFocusHandlerRef.current?.("left");
-          else if (event.key === "ArrowRight") battleFocusHandlerRef.current?.("right");
+          battleCommandHandlerRef.current?.(command);
           return;
         }
-        const bindings = getKeyBindings();
-        if (battleActiveRef.current && (key === bindings.moveLeft || key === bindings.moveRight)) {
-          event.preventDefault();
-          if (event.repeat || transitionRef.current !== "idle") return;
-          const direction = key === bindings.moveRight ? 1 : -1;
-          stopMovement();
-          setFastWalking(false);
-          setMoving(true);
-          moveOneStep(direction);
-          movementInterval.current = window.setInterval(() => moveOneStep(direction), 100);
-          return;
-        }
-        if (!battleCommandsReadyRef.current || event.repeat) return;
-        const commands = {
-          [bindings.fight]: "fight",
-          [bindings.guard]: "guard",
-          [bindings.heal]: "heal",
-          [bindings.special]: "special"
-        };
-        if (!commands[key]) return;
+        if (!moveLeft && !moveRight) return;
         event.preventDefault();
-        battleCommandHandlerRef.current?.(commands[key]);
+        if (transitionRef.current !== "idle") return;
+        const direction = moveRight ? 1 : -1;
+        stopMovement();
+        setFastWalking(false);
+        setMoving(true);
+        moveOneStep(direction);
+        movementInterval.current = window.setInterval(() => moveOneStep(direction), 80);
         return;
       }
-      const bindings = getKeyBindings();
-      if (key !== bindings.moveLeft && key !== bindings.moveRight) return;
+      if (!moveLeft && !moveRight) return;
       event.preventDefault();
-      shiftHeld.current = event.shiftKey;
-      if (event.repeat || transitionRef.current !== "idle") return;
-      const direction = key === bindings.moveRight ? 1 : -1;
+      if (transitionRef.current !== "idle") return;
+      const direction = moveRight ? 1 : -1;
       stopMovement();
-      setFastWalking(event.shiftKey);
+      setFastWalking(shiftHeld.current);
       setMoving(true);
       moveOneStep(direction);
       movementInterval.current = window.setInterval(() => moveOneStep(direction), 100);
     };
-
-    const onKeyUp = (event) => {
-      if (event.key === "Shift") {
+    const onMouseUp = (event) => {
+      const mouseBinding = mouseBindingForEvent(event);
+      if (!mouseBinding) return;
+      const bindings = getKeyBindings();
+      if (getBindingKeys(bindings, "shiftModifier").includes(mouseBinding)) {
         shiftHeld.current = false;
         setFocusModifierHeld(false);
         setFastWalking(false);
-        return;
       }
-      const bindings = getKeyBindings();
-      if (event.key.toLowerCase() === bindings.moveLeft || event.key.toLowerCase() === bindings.moveRight) stopMovement();
+      if (getBindingKeys(bindings, "moveLeft").includes(mouseBinding) || getBindingKeys(bindings, "moveRight").includes(mouseBinding)) stopMovement();
     };
-
+    const onContextMenu = (event) => {
+      if (!pausedRef.current && battleActiveRef.current) event.preventDefault();
+    };
     const onBlur = () => {
       shiftHeld.current = false;
       setFocusModifierHeld(false);
@@ -764,10 +824,16 @@ export default function GameWorldScene() {
     };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("mousedown", onMouseDown);
+    window.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("contextmenu", onContextMenu);
     window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("mousedown", onMouseDown);
+      window.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("contextmenu", onContextMenu);
       window.removeEventListener("blur", onBlur);
       stopMovement();
       transitionTimers.current.forEach((timer) => window.clearInterval(timer));
@@ -882,7 +948,9 @@ export default function GameWorldScene() {
     enterResidentialMap();
   }, [isStrike]);
   useEffect(() => {
-    if (battleActive || !strikeActiveRef.current) return;
+    if (battleActive) return;
+    setFacing(1);
+    if (!strikeActiveRef.current) return;
     strikeActiveRef.current = false;
     movementLockedRef.current = false;
     transitionTimers.current.forEach((timer) => window.clearInterval(timer));
@@ -1116,9 +1184,9 @@ export default function GameWorldScene() {
             </div>
           </div>
           <div className="battle-command-list">
-            <button key={`fight-${battleActionPulse}`} className={battleAction === "fight" ? "is-selected" : ""} onClick={() => executeBattleCommand("fight")}><kbd>{keyBindings.fight.toUpperCase()}</kbd><span>たたかう</span></button>
-            <button key={`guard-${battleActionPulse}`} className={battleAction === "guard" ? "is-selected" : ""} onClick={() => executeBattleCommand("guard")}><kbd>{keyBindings.guard.toUpperCase()}</kbd><span>まもる</span></button>
-            <button key={`heal-${battleActionPulse}`} disabled={displayedSp < currentMaxSp / 3} className={battleAction === "heal" ? "is-selected" : ""} onClick={() => executeBattleCommand("heal")}><kbd>{keyBindings.heal.toUpperCase()}</kbd><span>回復</span></button>
+            <button key={`fight-${battleActionPulse}`} className={battleAction === "fight" ? "is-selected" : ""} onClick={() => executeBattleCommand("fight")}><kbd>{formatKeyBinding(getPrimaryBinding(keyBindings, "fight"))}</kbd><span>たたかう</span></button>
+            <button key={`guard-${battleActionPulse}`} className={battleAction === "guard" ? "is-selected" : ""} onClick={() => executeBattleCommand("guard")}><kbd>{formatKeyBinding(getPrimaryBinding(keyBindings, "guard"))}</kbd><span>まもる</span></button>
+            <button key={`heal-${battleActionPulse}`} disabled={displayedSp < currentMaxSp / 3} className={battleAction === "heal" ? "is-selected" : ""} onClick={() => executeBattleCommand("heal")}><kbd>{formatKeyBinding(getPrimaryBinding(keyBindings, "heal"))}</kbd><span>回復</span></button>
             <button
               key={`special-${battleActionPulse}`}
               disabled={specialChargeProgress < 100}
@@ -1127,7 +1195,7 @@ export default function GameWorldScene() {
               aria-label={`必殺技、チャージ${Math.round(specialChargeProgress)}%`}
               onClick={() => executeBattleCommand("special")}
             >
-              <kbd>{keyBindings.special.toUpperCase()}</kbd>
+              <kbd>{formatKeyBinding(getPrimaryBinding(keyBindings, "special"))}</kbd>
               <span>必殺技</span>
             </button>
           </div>

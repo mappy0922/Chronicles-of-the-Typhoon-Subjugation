@@ -103,10 +103,19 @@ html.game-paused *::after {
 .settings-panel { display:grid; justify-items:center; align-content:center; gap:1.25rem; width:100%; min-height:100%; padding:clamp(1.25rem, 4vh, 3rem) clamp(1rem, 6vw, 5rem); text-align:center; color:var(--text-primary); }
 .settings-panel h2 { margin:0; font-size:clamp(1.75rem, 3.5vw, 2.5rem); line-height:1.2; }
 .settings-panel h3 { margin:0; font-size:clamp(1.15rem, 2vw, 1.5rem); line-height:1.3; }
-.settings-section { display:grid; gap:.65rem; width:min(100%, 760px); }
-.settings-key-bindings { display:grid; grid-template-columns:1fr; gap:.5rem; padding:.85rem 1rem; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:rgba(255,255,255,.035); text-align:left; }
-.settings-key-row { display:flex; align-items:center; justify-content:space-between; gap:.6rem; padding:.35rem 0 .55rem; border-bottom:1px solid rgba(255,255,255,.18); color:var(--text-primary); font-size:clamp(1rem, 1.5vw, 1.15rem); }
-.settings-key-row button { min-width:6rem; padding:.45rem .7rem; border:1px solid rgba(255,255,255,.24); border-radius:6px; color:#fff; background:rgba(255,255,255,.08); font-size:1rem; cursor:pointer; }
+.settings-section { display:grid; gap:.65rem; width:min(100%, 1200px); }
+.settings-key-bindings { display:grid; grid-template-columns:1fr; padding:.85rem 1rem; border:1px solid var(--border-subtle); border-radius:var(--radius-md); background:rgba(255,255,255,.035); text-align:left; }
+.settings-key-row { display:grid; grid-template-columns:minmax(8rem, 1fr) repeat(2, minmax(10rem, 14rem)); align-items:center; gap:.8rem; padding:0; border-bottom:1px solid rgba(255,255,255,.18); color:var(--text-primary); font-size:clamp(1rem, 1.5vw, 1.15rem); }
+.settings-key-row:last-child { border-bottom:0; }
+.settings-key-header { padding-top:0; color:var(--text-secondary); font-size:.9rem; text-align:center; }
+.settings-key-row > * { padding-top:.45rem; padding-bottom:.6rem; }
+.settings-key-action { text-align:left; }
+.settings-key-row > :nth-child(2), .settings-key-row > :nth-child(3) { align-self:stretch; border-left:1px solid rgba(255,255,255,.2); padding-left:.8rem; }
+.settings-key-header > * { padding-bottom:.45rem; }
+.settings-key-header .settings-key-action { text-align:left; }
+.settings-key-cell { display:flex; justify-content:center; }
+@media (max-width:560px) { .settings-key-bindings { padding:.65rem; } .settings-key-row { grid-template-columns:minmax(6rem, 1fr) repeat(2, minmax(5.5rem, 7rem)); gap:.35rem; font-size:.9rem; } .settings-key-row > :nth-child(2), .settings-key-row > :nth-child(3) { padding-left:.4rem; } }
+.settings-key-row button { width:100%; min-width:0; padding:.45rem .5rem; border:1px solid rgba(255,255,255,.24); border-radius:6px; color:#fff; background:rgba(255,255,255,.08); font-size:1rem; cursor:pointer; }
 .settings-key-row button.is-listening { border-color:#fff; background:rgba(255,255,255,.2); }
 .settings-key-error { color:#ff9b9b !important; font-size:.95rem; }
 .settings-panel .pause-volume-control { padding:.35rem 0 .55rem; border-bottom:1px solid rgba(255,255,255,.18); font-size:clamp(1rem, 1.5vw, 1.15rem); }
@@ -391,3 +400,5 @@ html.game-paused *::after {
   height: 0;
 }
 
+
+.settings-cancel-capture { justify-self:center; padding:.35rem .8rem; border:1px solid rgba(255,255,255,.24); border-radius:6px; color:#fff; background:rgba(255,255,255,.08); cursor:pointer; }
