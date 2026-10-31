@@ -38,9 +38,11 @@
 .strike-encounter { position:absolute; z-index:12; inset:0; pointer-events:none; }
 .strike-player-position, .typhoon-strike-arrival { position:absolute; bottom:20%; width:clamp(120px,18vw,220px); height:clamp(100px,21vh,190px); display:flex; justify-content:center; align-items:flex-end; }
 .strike-player-position { z-index:2; left:24%; transform:translateX(-50%); transition:left .1s linear; }
+.strike-player-position.is-jumping { top:var(--jump-target-top, 45%); bottom:auto; transform:translate(-50%,-50%); transition:left .54s cubic-bezier(.2,.75,.25,1),top .3s ease-out; }
 .strike-player-position img { position:relative; z-index:1; display:block; width:auto; height:100%; max-width:100%; object-fit:contain; filter:drop-shadow(0 5px 3px rgba(0,0,0,.3)); }
+.strike-player-position.is-jumping img { height:82%; }
+.strike-player-position.is-jumping img { animation:battle-player-jump-lunge .84s ease-out both; }
 .battle-player-shadow { bottom:-5px; width:66%; height:12px; }
-.strike-player-position.is-victorious img { height:105%; max-width:100%; }
 .typhoon-strike-arrival { z-index:1; right:-8%; width:clamp(320px,62vw,760px); height:clamp(280px,68vh,660px); cursor:default; animation:typhoon-strike-enter 8s cubic-bezier(.18,.7,.28,1) both; }
 .typhoon-strike-character { display:block; width:auto; height:100%; max-width:100%; object-fit:contain; filter:drop-shadow(0 8px 14px rgba(0,0,0,.38)); }
 .boss-health-gauge { position:absolute; z-index:2; top:-42px; left:50%; translate:-50% 0; box-sizing:border-box; width:min(calc(100vw - 32px),clamp(260px,38vw,480px)); height:16px; padding:2px; overflow:hidden; border:2px solid #f8fafc; border-radius:2px; background:rgba(8,34,54,.94); box-shadow:0 0 10px rgba(255,255,255,.35),0 2px 10px rgba(0,0,0,.65); pointer-events:none; }
@@ -96,6 +98,7 @@
 @keyframes typhoon-strike-enter { from { opacity:0; translate:0 -150px; } to { opacity:1; translate:0 0; } }
 @keyframes battle-hud-appear { from { opacity:0; translate:0 10px; } to { opacity:1; translate:0 0; } }
 @keyframes battle-command-press { 0% { transform:scale(.96) translateY(1px); } 60% { transform:scale(1.015) translateY(-1px); } 100% { transform:scale(1) translateY(0); } }
+@keyframes battle-player-jump-lunge { 0% { transform:translateY(0); } 32% { transform:translateY(-30px); } 70% { transform:translateY(-17px); } 100% { transform:translateY(0); } }
 @keyframes boss-gauge-spin-settle { 0% { opacity:0; transform:rotate(0deg) scale(.4); } 68% { opacity:1; transform:rotate(1260deg) scale(1.08); } 84% { transform:rotate(1480deg) scale(.97); } 100% { opacity:1; transform:rotate(1440deg) scale(1); } }
 @keyframes boss-hit-shake { 0%,100% { transform:translateX(0); } 12% { transform:translateX(-14px); } 24% { transform:translateX(13px); } 36% { transform:translateX(-10px); } 48% { transform:translateX(9px); } 62% { transform:translateX(-6px); } 76% { transform:translateX(5px); } 88% { transform:translateX(-2px); } }
 @keyframes boss-focus-pulse { 0%,100% { opacity:.72; box-shadow:0 0 7px rgba(250,204,21,.65),inset 0 0 5px rgba(250,204,21,.25); } 50% { opacity:1; box-shadow:0 0 15px rgba(250,204,21,1),inset 0 0 10px rgba(250,204,21,.5); } }
