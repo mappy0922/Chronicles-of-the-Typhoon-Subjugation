@@ -89,7 +89,7 @@ export default function SaveSlotsView({ mode = "save", onClose }) {
           {Array.from({ length: 10 }, (_, index) => {
             const save = saveSlots[index];
             const gender = save?.player?.appearance?.gender;
-            const characterImage = gender === "feminine" ? "/player-female-normalized.png" : "/player-male-normalized.png";
+            const characterImage = gender === "feminine" ? "/player-female-card-clean.png" : "/player-male-card-clean.png";
             const defeatedTypes = new Set([
               ...(save?.encyclopedia || []).filter((enemy) => enemy.status === "完全討伐").map((enemy) => enemy.type),
               save?.lastResult?.victory ? save.lastResult.typhoon?.type : null
