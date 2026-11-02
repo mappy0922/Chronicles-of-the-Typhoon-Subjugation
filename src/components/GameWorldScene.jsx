@@ -22,14 +22,23 @@ const getTyphoonType = (intensity) => {
 const BOSS_MAX_HP = { breeze: 1000, rain: 3000, gale: 5000, large: 10000, complex: 20000 };
 const BATTLE_JUMP_ATTACK_POSITION = 64;
 const BATTLE_JUMP_TRIGGER_RANGE = 15;
+const BATTLE_JUMP_TARGET_STANDOFF = 6;
 const BATTLE_JUMP_LUNGE_DURATION = 180;
 const BATTLE_JUMP_LANDING_DURATION = 100;
+const SPECIAL_CHARGE_DURATION = 300_000;
 const FOCUS_TARGETS = [
   { id: "head", label: "\u982d", x: 50, y: 22 },
   { id: "eyes", label: "\u76ee", x: 50, y: 43 },
   { id: "hand", label: "\u624b", x: 76, y: 68 },
   { id: "foot", label: "\u8db3", x: 50, y: 91 }
 ];
+const EYE_BARRIER_CELLS = [
+  [0, 3], [0, 4], [0, 5], [0, 6], [0, 7], [0, 8],
+  [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6], [1, 7], [1, 8], [1, 9], [1, 10],
+  [2, 1], [2, 2], [2, 3], [2, 4], [2, 5], [2, 6], [2, 7], [2, 8], [2, 9], [2, 10],
+  [3, 3], [3, 4], [3, 5], [3, 6], [3, 7], [3, 8]
+];
+const EYE_BARRIER_WIDTHS = { breeze: "36%", rain: "42%", gale: "38%", large: "46%", complex: "42%" };
 const FOCUS_MARK_OFFSETS = {
   breeze: { eyes: { x: -5, y: 13 }, foot: { x: 6 } },
   rain: { all: { x: -2, y: 2 }, eyes: { x: -14, y: 5 }, rightHand: { x: 4, y: -4 } },
@@ -57,6 +66,7 @@ const getAdjustedFocusTarget = (targetId, typhoonType, handSide = "right") => {
     y: Math.max(2, Math.min(98, y))
   };
 };
+const orientBossTarget = (target, flipped) => flipped ? { ...target, x: 100 - target.x } : target;
 
 const HOUSE_LAYOUTS = [
   {
@@ -291,6 +301,7 @@ export default function GameWorldScene() {
   const [battlePlayerLeft, setBattlePlayerLeft] = useState(24);
   const [battlePlayerHasMoved, setBattlePlayerHasMoved] = useState(false);
   const [battleJumpActive, setBattleJumpActive] = useState(false);
+  const [battleJumpFlipped, setBattleJumpFlipped] = useState(false);
   const [battleJumpTargetTop, setBattleJumpTargetTop] = useState(null);
   const [moving, setMoving] = useState(false);
   const [facing, setFacing] = useState(1);
@@ -301,6 +312,10 @@ export default function GameWorldScene() {
   const [isTyphoonTransition, setIsTyphoonTransition] = useState(false);
   const [mapLabelKey, setMapLabelKey] = useState(0);
   const [typhoonAppearance, setTyphoonAppearance] = useState(null);
+  const [bossFlipped, setBossFlipped] = useState(false);
+  const [bossHorizontalOffset, setBossHorizontalOffset] = useState(0);
+  const [eyeBarrierPhase, setEyeBarrierPhaseValue] = useState("inactive");
+  const [battleFollowingBoss, setBattleFollowingBoss] = useState(false);
   const [showBossGauge, setShowBossGauge] = useState(false);
   const [bossGaugeCharge, setBossGaugeCharge] = useState(0);
   const [bossGaugeDamage, setBossGaugeDamage] = useState(0);
@@ -324,6 +339,15 @@ export default function GameWorldScene() {
   const mapIndexRef = useRef(1);
   const positionRef = useRef(48);
   const battlePlayerLeftRef = useRef(24);
+  const bossHorizontalOffsetRef = useRef(0);
+  const bossFollowTimeoutRef = useRef(null);
+  const bossMovementTimeoutRef = useRef(null);
+  const bossMovementInProgressRef = useRef(false);
+  const eyeBarrierPhaseRef = useRef("inactive");
+  const eyesBarrierActivatedRef = useRef(false);
+  const eyeBarrierRevealCheckRef = useRef(null);
+  const freezeBattlePlayerRef = useRef(null);
+  const battleJumpActiveRef = useRef(battleJumpActive);
   const battleGroundedRef = useRef(true);
   const transitionRef = useRef("idle");
   const lastMapTransitionWasTyphoonRef = useRef(false);
@@ -355,8 +379,103 @@ export default function GameWorldScene() {
   bossGaugeTrailRef.current = bossGaugeTrail;
   positionRef.current = position;
   battlePlayerLeftRef.current = battlePlayerLeft;
+  battleJumpActiveRef.current = battleJumpActive;
+  const setEyeBarrierPhase = (phase) => {
+    eyeBarrierPhaseRef.current = phase;
+    setEyeBarrierPhaseValue(phase);
+  };
+  eyeBarrierRevealCheckRef.current = () => {
+    if (eyeBarrierPhaseRef.current !== "pending" || bossMovementInProgressRef.current || !battleGroundedRef.current) return;
+    setEyeBarrierPhase("revealing");
+  };
+  freezeBattlePlayerRef.current = () => {
+    if (movementInterval.current) window.clearInterval(movementInterval.current);
+    movementInterval.current = null;
+    window.clearTimeout(bossFollowTimeoutRef.current);
+    const encounterBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
+    const playerBounds = document.querySelector(".strike-player-position")?.getBoundingClientRect();
+    if (encounterBounds && playerBounds && encounterBounds.width > 0) {
+      const frozenPosition = Math.max(0, Math.min(100, ((playerBounds.left + playerBounds.width / 2 - encounterBounds.left) / encounterBounds.width) * 100));
+      battlePlayerLeftRef.current = frozenPosition;
+      setBattlePlayerLeft(frozenPosition);
+    }
+    setBattleFollowingBoss(false);
+    setMoving(false);
+  };
   const bossGaugeProgress = Math.max(0, bossGaugeCharge - bossGaugeDamage);
   const grass = useMemo(() => makeGrass(1200), []);
+
+  useEffect(() => {
+    if (!battleActive || !typhoonAppearance) {
+      setBossFlipped(false);
+      return;
+    }
+    const battleBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
+    const bossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
+    const playerBounds = document.querySelector(".strike-player-position img")?.getBoundingClientRect();
+    if (!battleBounds || !bossBounds) return;
+    const playerX = battleBounds.left + (battlePlayerLeft / 100) * battleBounds.width;
+    const playerBackX = playerBounds
+      ? facing < 0 ? playerBounds.right : playerBounds.left
+      : playerX - facing * 60;
+    const bossBackSideInset = bossBounds.width * 0.08;
+    if (!bossFlipped && playerBackX > bossBounds.right - bossBackSideInset) {
+      setBossFlipped(true);
+    } else if (bossFlipped && playerBackX < bossBounds.left + bossBackSideInset) {
+      setBossFlipped(false);
+    }
+  }, [battleActive, battlePlayerLeft, bossFlipped, bossHorizontalOffset, facing, typhoonAppearance]);
+
+  useEffect(() => {
+    if (!battleActive || !battleCommandsReady || !typhoonAppearance || bossDefeating || isPaused) {
+      if (!battleActive || !typhoonAppearance) {
+        window.clearTimeout(bossFollowTimeoutRef.current);
+        setBattleFollowingBoss(false);
+        bossHorizontalOffsetRef.current = 0;
+        setBossHorizontalOffset(0);
+      }
+      return undefined;
+    }
+
+    const movementTimer = window.setInterval(() => {
+      if (eyeBarrierPhaseRef.current === "pending" || eyeBarrierPhaseRef.current === "revealing") return;
+      if (Math.random() >= 0.4) return;
+      const encounterBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
+      const arrivalBounds = document.querySelector(".typhoon-strike-arrival")?.getBoundingClientRect();
+      const bossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
+      if (!encounterBounds || !arrivalBounds || !bossBounds) return;
+
+      const currentOffset = bossHorizontalOffsetRef.current;
+      const baseLeft = arrivalBounds.left + (arrivalBounds.width - bossBounds.width) / 2;
+      const baseCenter = baseLeft + bossBounds.width / 2;
+      const bossHalfWidth = bossBounds.width / 2;
+      const minOffset = encounterBounds.left + bossHalfWidth - baseCenter;
+      const maxOffset = encounterBounds.right - bossHalfWidth - baseCenter;
+      if (minOffset >= maxOffset) return;
+
+      const nextOffset = minOffset + Math.random() * (maxOffset - minOffset);
+      const offsetDelta = nextOffset - currentOffset;
+      if (Math.abs(offsetDelta) < 4) return;
+      bossHorizontalOffsetRef.current = nextOffset;
+      setBossHorizontalOffset(nextOffset);
+      bossMovementInProgressRef.current = true;
+      window.clearTimeout(bossMovementTimeoutRef.current);
+      bossMovementTimeoutRef.current = window.setTimeout(() => {
+        bossMovementInProgressRef.current = false;
+        eyeBarrierRevealCheckRef.current?.();
+      }, 700);
+      if (battleJumpActiveRef.current) {
+        const nextPlayerLeft = Math.max(0, Math.min(100, battlePlayerLeftRef.current + (offsetDelta / encounterBounds.width) * 100));
+        battlePlayerLeftRef.current = nextPlayerLeft;
+        setBattlePlayerLeft(nextPlayerLeft);
+        setBattleFollowingBoss(true);
+        window.clearTimeout(bossFollowTimeoutRef.current);
+        bossFollowTimeoutRef.current = window.setTimeout(() => setBattleFollowingBoss(false), 250);
+      }
+    }, 1800);
+
+    return () => window.clearInterval(movementTimer);
+  }, [battleActive, battleCommandsReady, bossDefeating, isPaused, typhoonAppearance]);
 
   useEffect(() => {
     const showRetirementRewards = () => {
@@ -574,11 +693,11 @@ export default function GameWorldScene() {
 
   useEffect(() => {
     if (isPaused || !battleCommandsReady || specialChargeProgressRef.current >= 1) return undefined;
-    let startedAt = performance.now() - specialChargeProgressRef.current * 180_000;
+    let startedAt = performance.now() - specialChargeProgressRef.current * SPECIAL_CHARGE_DURATION;
     let lastUpdate = 0;
     let frameId;
     const chargeSpecial = (timestamp) => {
-      const progress = Math.min(1, (timestamp - startedAt) / 180_000);
+      const progress = Math.min(1, (timestamp - startedAt) / SPECIAL_CHARGE_DURATION);
       if (timestamp - lastUpdate >= 1000 / 30 || progress === 1) {
         specialChargeProgressRef.current = progress;
         setSpecialChargeProgress(progress * 100);
@@ -593,12 +712,14 @@ export default function GameWorldScene() {
   useEffect(() => () => {
     window.clearInterval(battleActionTimeoutRef.current);
     window.clearInterval(bossHitTimeoutRef.current);
+    window.clearTimeout(bossFollowTimeoutRef.current);
+    window.clearTimeout(bossMovementTimeoutRef.current);
   }, []);
 
   const moveBattleFocus = (direction) => {
     if (bossDefeatedRef.current) return;
     if (direction === "left" || direction === "right") {
-      if (focusTargetIndex === 2) setHandSide(direction);
+      if (focusTargetIndex === 2) setHandSide((currentSide) => currentSide === "right" ? "left" : "right");
       return;
     }
     const nextIndex = (focusTargetIndex + direction + FOCUS_TARGETS.length) % FOCUS_TARGETS.length;
@@ -620,23 +741,30 @@ export default function GameWorldScene() {
       ? Math.max(0, Math.min(100, ((bossBounds.left + (attackTarget.x / 100) * bossBounds.width - battleBounds.left) / battleBounds.width) * 100))
       : BATTLE_JUMP_ATTACK_POSITION;
     if (Math.abs(attackLeft - currentPosition) > BATTLE_JUMP_TRIGGER_RANGE) return false;
+    const jumpLandingLeft = Math.max(0, Math.min(100, attackLeft + (currentPosition < attackLeft ? -BATTLE_JUMP_TARGET_STANDOFF : BATTLE_JUMP_TARGET_STANDOFF)));
     const attackTop = battleBounds && bossBounds
       ? Math.max(40, Math.min(battleHeight - 40, bossBounds.top + (attackTarget.y / 100) * bossBounds.height - battleBounds.top))
       : battleHeight * 0.45;
     const groundTop = battleHeight * 0.8 - playerContainerHeight / 2;
+    const playerImageBounds = document.querySelector(".strike-player-position img")?.getBoundingClientRect();
+    const playerBackX = playerImageBounds
+      ? facing < 0 ? playerImageBounds.right : playerImageBounds.left
+      : (battleBounds?.left || 0) + (currentPosition / 100) * (battleBounds?.width || window.innerWidth) - facing * 60;
+    const attackPointX = battleBounds ? battleBounds.left + (attackLeft / 100) * battleBounds.width : attackLeft;
 
     battleGroundedRef.current = false;
     setBattleJumpActive(true);
+    setBattleJumpFlipped(playerBackX > attackPointX);
     setBattleJumpTargetTop(attackTop);
     setBattlePlayerHasMoved(true);
-    setFacing(1);
+    setFacing(currentPosition > attackLeft ? -1 : 1);
     setMoving(false);
     if (movementInterval.current) {
       window.clearInterval(movementInterval.current);
       movementInterval.current = null;
     }
-    battlePlayerLeftRef.current = attackLeft;
-    setBattlePlayerLeft(attackLeft);
+    battlePlayerLeftRef.current = jumpLandingLeft;
+    setBattlePlayerLeft(jumpLandingLeft);
     const impactTimer = scheduleWhileUnpaused(() => {
       transitionTimers.current = transitionTimers.current.filter((timer) => timer !== impactTimer);
       setBattleJumpTargetTop(groundTop);
@@ -645,7 +773,11 @@ export default function GameWorldScene() {
         transitionTimers.current = transitionTimers.current.filter((timer) => timer !== landingTimer);
         battleGroundedRef.current = true;
         setBattleJumpActive(false);
+        setBattleJumpFlipped(false);
+        window.clearTimeout(bossFollowTimeoutRef.current);
+        setBattleFollowingBoss(false);
         setBattleJumpTargetTop(null);
+        eyeBarrierRevealCheckRef.current?.();
       }, BATTLE_JUMP_LANDING_DURATION);
       transitionTimers.current.push(landingTimer);
     }, BATTLE_JUMP_LUNGE_DURATION);
@@ -654,7 +786,7 @@ export default function GameWorldScene() {
   };
 
   const executeBattleCommand = (command) => {
-    if (pausedRef.current || !battleCommandsReadyRef.current || !battleGroundedRef.current) return;
+    if (pausedRef.current || !battleCommandsReadyRef.current || !battleGroundedRef.current || eyeBarrierPhaseRef.current === "pending" || eyeBarrierPhaseRef.current === "revealing") return;
     const maxHp = computedStats.maxHp || player.maxHp || 500;
     const maxSp = player.maxSp || 100;
     const spPerSegment = maxSp / 3;
@@ -667,16 +799,31 @@ export default function GameWorldScene() {
     battleActionTimeoutRef.current = scheduleWhileUnpaused(() => setBattleAction(null), 220);
 
     const dealBossDamage = (damage, critical, target) => {
+      if (target.id === "eyes" && bossCurrentHp > 0 && bossCurrentHp <= bossMaxHp / 2) {
+        bossHitCounterRef.current += 1;
+        setBossHitEffect({ id: bossHitCounterRef.current, damage: 0, targetId: target.id, typhoonType: bossType, critical: false, blocked: true });
+        window.clearInterval(bossHitTimeoutRef.current);
+        bossHitTimeoutRef.current = scheduleWhileUnpaused(() => setBossHitEffect(null), 900);
+        return;
+      }
       const damageAsGaugePercent = (damage / bossMaxHp) * 100;
       const actualProgressDamage = Math.min(damageAsGaugePercent, bossGaugeProgress);
       if (actualProgressDamage <= 0) return;
       const actualHpDamage = Math.min(bossCurrentHp, Math.max(1, Math.round((bossMaxHp * actualProgressDamage) / 100)));
+      const nextBossHp = Math.max(0, bossCurrentHp - actualHpDamage);
       setBossGaugeTrail((currentTrail) => Math.max(currentTrail, bossGaugeProgress));
       const defeatsBoss = damage >= bossCurrentHp;
       setBossGaugeDamage((currentDamage) => Math.min(100, currentDamage + actualProgressDamage));
       bossHitCounterRef.current += 1;
       setBossHitEffect({ id: bossHitCounterRef.current, damage: actualHpDamage, targetId: target.id, typhoonType: bossType, critical });
       window.clearInterval(bossHitTimeoutRef.current);
+      if (!defeatsBoss && !eyesBarrierActivatedRef.current && nextBossHp <= bossMaxHp / 2) {
+        eyesBarrierActivatedRef.current = true;
+        setEyeBarrierPhase("pending");
+        freezeBattlePlayerRef.current?.();
+        setBattleAction(null);
+        eyeBarrierRevealCheckRef.current?.();
+      }
       if (defeatsBoss) {
         bossDefeatedRef.current = false;
         setBossDefeating(true);
@@ -695,9 +842,9 @@ export default function GameWorldScene() {
       const bossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
       const playerBounds = document.querySelector(".strike-player-position img")?.getBoundingClientRect();
       const nearbyTargets = [
-        ...FOCUS_TARGETS.filter((target) => target.id !== "hand").map((target) => getAdjustedFocusTarget(target.id, bossType, handSide)),
-        getAdjustedFocusTarget("hand-left", bossType, handSide),
-        getAdjustedFocusTarget("hand-right", bossType, handSide)
+        ...FOCUS_TARGETS.filter((target) => target.id !== "hand").map((target) => orientBossTarget(getAdjustedFocusTarget(target.id, bossType, handSide), bossFlipped)),
+        orientBossTarget(getAdjustedFocusTarget("hand-left", bossType, handSide), bossFlipped),
+        orientBossTarget(getAdjustedFocusTarget("hand-right", bossType, handSide), bossFlipped)
       ];
       const attackTarget = focusModeRef.current
         ? focusTarget
@@ -718,6 +865,10 @@ export default function GameWorldScene() {
         ? ((bossBounds.left + (attackTarget.x / 100) * bossBounds.width - battleBounds.left) / battleBounds.width) * 100
         : BATTLE_JUMP_ATTACK_POSITION;
       if (Math.abs(attackLeft - battlePlayerLeftRef.current) > BATTLE_JUMP_TRIGGER_RANGE) return false;
+      if (attackTarget.id === "foot") {
+        setBattlePlayerHasMoved(true);
+        setFacing(battlePlayerLeftRef.current > attackLeft ? -1 : 1);
+      }
 
       const focusMultiplier = attackTarget.id === "eyes" ? 2 : 1;
       const critical = Math.random() < 0.03;
@@ -763,8 +914,14 @@ export default function GameWorldScene() {
         stopMovement();
         return;
       }
-      setFacing(direction);
       if (battleActiveRef.current) {
+        if (eyeBarrierPhaseRef.current === "pending" || eyeBarrierPhaseRef.current === "revealing") {
+          stopMovement();
+          return;
+        }
+        setFacing(direction);
+        window.clearTimeout(bossFollowTimeoutRef.current);
+        setBattleFollowingBoss(false);
         setBattlePlayerHasMoved(true);
         const battleStep = 3.6;
         const nextLeft = Math.max(0, Math.min(100, battlePlayerLeftRef.current + direction * battleStep));
@@ -772,6 +929,7 @@ export default function GameWorldScene() {
         setBattlePlayerLeft(nextLeft);
         return;
       }
+      setFacing(direction);
       const stepSize = shiftHeld.current ? 2.6 : 1.5;
       const nextPosition = Math.max(0, Math.min(100, positionRef.current + direction * stepSize));
       positionRef.current = nextPosition;
@@ -990,6 +1148,10 @@ export default function GameWorldScene() {
       transitionTimers.current.forEach((timer) => window.clearInterval(timer));
       transitionTimers.current = [];
       bossDefeatedRef.current = false;
+      eyesBarrierActivatedRef.current = false;
+      bossMovementInProgressRef.current = false;
+      window.clearTimeout(bossMovementTimeoutRef.current);
+      setEyeBarrierPhase("inactive");
       setFocusTargetIndex(0);
       setHandSide("right");
       setFocusMode(false);
@@ -1016,6 +1178,10 @@ export default function GameWorldScene() {
     strikeActiveRef.current = true;
     movementLockedRef.current = true;
     bossDefeatedRef.current = false;
+    eyesBarrierActivatedRef.current = false;
+    bossMovementInProgressRef.current = false;
+    window.clearTimeout(bossMovementTimeoutRef.current);
+    setEyeBarrierPhase("inactive");
     setFocusTargetIndex(0);
     setHandSide("right");
     setFocusMode(false);
@@ -1045,13 +1211,25 @@ export default function GameWorldScene() {
         return;
       }
       const [src, name] = getTyphoonCharacter(approach);
-      startMapTransition(1, 48, () => setTyphoonAppearance({ src, name }), { typhoon: true });
+      startMapTransition(1, 48, () => {
+        eyesBarrierActivatedRef.current = false;
+        bossMovementInProgressRef.current = false;
+        window.clearTimeout(bossMovementTimeoutRef.current);
+        bossHorizontalOffsetRef.current = 0;
+        setBossHorizontalOffset(0);
+        setEyeBarrierPhase("inactive");
+        setTyphoonAppearance({ src, name });
+      }, { typhoon: true });
     };
     enterResidentialMap();
   }, [isStrike]);
   useEffect(() => {
     if (battleActive) return;
     setFacing(1);
+    eyesBarrierActivatedRef.current = false;
+    bossMovementInProgressRef.current = false;
+    window.clearTimeout(bossMovementTimeoutRef.current);
+    setEyeBarrierPhase("inactive");
     if (!strikeActiveRef.current) return;
     strikeActiveRef.current = false;
     movementLockedRef.current = false;
@@ -1089,9 +1267,12 @@ export default function GameWorldScene() {
   const playerHpRatio = Math.max(0, player.currentHp) / playerMaxHp;
   const currentMaxSp = player.maxSp || 100;
   const displayedSp = Math.min(currentMaxSp, player.currentSp + currentMaxSp / 3 * spRegenProgress);
-  const focusTarget = getAdjustedFocusTarget(FOCUS_TARGETS[focusTargetIndex]?.id || "head", bossType, handSide);
+  const focusTarget = orientBossTarget(getAdjustedFocusTarget(FOCUS_TARGETS[focusTargetIndex]?.id || "head", bossType, handSide), bossFlipped);
+  const eyeBarrierTarget = orientBossTarget(getAdjustedFocusTarget("eyes", bossType, handSide), bossFlipped);
+  const eyeBarrierLocked = eyeBarrierPhase === "pending" || eyeBarrierPhase === "revealing";
+  const eyeBarrierActive = battleCommandsReady && bossCurrentHp > 0 && (eyeBarrierPhase === "revealing" || eyeBarrierPhase === "active");
   const damageTarget = bossHitEffect
-    ? getAdjustedFocusTarget(bossHitEffect.targetId, bossHitEffect.typhoonType || bossType, handSide)
+    ? orientBossTarget(getAdjustedFocusTarget(bossHitEffect.targetId, bossHitEffect.typhoonType || bossType, handSide), bossFlipped)
     : focusTarget;
   const completeBossDefeat = () => {
     if (bossDefeatedRef.current || !typhoonAppearance) return;
@@ -1191,7 +1372,7 @@ export default function GameWorldScene() {
       {(mapTransition === "loading" || mapTransition === "fade-in") && <div className={`map-loading-indicator ${mapTransition === "fade-in" ? "is-fading" : ""}`}>{"\u30ED\u30FC\u30C9\u4E2D..."}</div>}
       {(mapTransition === "fade-out" || mapTransition === "loading") && <div className={`map-transition-curtain ${mapTransition === "fade-out" ? "is-fading-out" : ""}`} aria-hidden="true" />}
       {battleActive && typhoonAppearance && <div className="strike-encounter" aria-label="\u4E3B\u4EBA\u516C\u3068\u53F0\u98A8\u306E\u5BFE\u5CD9">
-        <div className={`strike-player-position ${battleJumpActive ? "is-jumping" : ""}`} style={{ left: `${battlePlayerLeft}%`, top: battleJumpActive && battleJumpTargetTop !== null ? `${battleJumpTargetTop}px` : undefined }}>
+        <div className={`strike-player-position ${battleJumpActive ? "is-jumping" : ""} ${battleFollowingBoss ? "is-following-boss" : ""} ${eyeBarrierLocked ? "is-barrier-locked" : ""}`} style={{ left: `${battlePlayerLeft}%`, top: battleJumpActive && battleJumpTargetTop !== null ? `${battleJumpTargetTop}px` : undefined }}>
           <span className="world-player-shadow battle-player-shadow" aria-hidden="true" />
           <img
             src={battleJumpActive
@@ -1208,6 +1389,7 @@ export default function GameWorldScene() {
                     ? facing < 0 ? "/left_woman_battle_idle.png" : "/right_woman_battle_idle.png"
                     : "/woman_battle_idle.png"}
             alt={isMale ? "\u7537\u6027\u5263\u58EB" : "\u5973\u6027\u5263\u58EB"}
+            className={`${!isMale ? "female-battle-character" : ""} ${battleJumpActive && battleJumpFlipped ? "is-flipped" : ""}`.trim()}
           />
         </div>
         <div
@@ -1228,30 +1410,52 @@ export default function GameWorldScene() {
           }}
         >
           {!bossFullyDefeated && <div
-            key={bossDefeating ? "boss-defeated" : `boss-hit-${bossHitEffect?.id || "idle"}`}
-            className={`typhoon-boss-sprite ${bossHitEffect ? "is-hit" : ""} ${bossDefeating ? "is-defeated" : ""}`}
+            key={bossDefeating ? "boss-defeated" : "boss-active"}
+            className={`typhoon-boss-sprite ${bossDefeating ? "is-defeated" : ""}`}
             onAnimationEnd={(event) => {
               if (event.target === event.currentTarget && event.animationName === "boss-defeat-exit") completeBossDefeat();
             }}
           >
-            <div className="typhoon-boss-art">
-              <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className="typhoon-strike-character" />
+            <div className="typhoon-boss-art" style={{ transform: `translateX(${bossHorizontalOffset}px)` }}>
+              <div key={`boss-hit-${bossHitEffect?.id || "idle"}`} className={`typhoon-boss-content ${bossHitEffect && !bossHitEffect.blocked ? "is-hit" : ""}`}>
+              <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className={`typhoon-strike-character ${bossFlipped ? "is-flipped" : ""}`} />
               {battleCommandsReady && focusModifierHeld && !bossDefeating && <span
                 className="boss-focus-marker"
                 style={{ left: `${focusTarget.x}%`, top: `${focusTarget.y}%` }}
                 aria-label={`${focusTarget.label}\u306b\u6ce8\u76ee\u4e2d`}
-              ><span className="boss-focus-marker-label">{focusTarget.label}</span></span>}
+              />}
+                {bossHitEffect && <span
+                  key={`boss-sparks-${bossHitEffect.id}`}
+                  className="boss-hit-sparks"
+                  style={{ left: `${damageTarget.x}%`, top: `${damageTarget.y}%` }}
+                  aria-hidden="true"
+                >{Array.from({ length: 16 }, (_, index) => <i key={index} style={{ "--spark-angle": `${index * 22.5 + (index % 2) * 7}deg`, "--spark-distance": `${-90 - (index % 4) * 20}px`, "--spark-length": `${7 + (index % 3) * 4}px`, "--spark-delay": `${(index % 3) * 0.015}s` }} />)}</span>}
+              </div>
+              {eyeBarrierActive && <span
+                className="boss-eye-barrier-grid"
+                style={{ left: `${eyeBarrierTarget.x}%`, top: `${eyeBarrierTarget.y}%`, "--eye-barrier-width": EYE_BARRIER_WIDTHS[bossType] || "30%" }}
+                aria-label="\u76EE\u306E\u30D0\u30EA\u30A2"
+              >{EYE_BARRIER_CELLS.map(([row, column], index) => <i
+                key={index}
+                style={{ gridRow: row + 1, gridColumn: column + 1, animationDelay: `${index * 80}ms` }}
+                onAnimationEnd={index === EYE_BARRIER_CELLS.length - 1 ? (event) => {
+                  if (event.animationName !== "boss-eye-barrier-cell" || eyeBarrierPhaseRef.current !== "revealing") return;
+                  setEyeBarrierPhase("active");
+                } : undefined}
+              />)}</span>}
               {bossHitEffect && <span
-                className={`boss-damage-number ${bossHitEffect.critical ? "is-critical" : ""}`}
+                key={`boss-damage-${bossHitEffect.id}`}
+                className={`boss-damage-number ${bossHitEffect.critical ? "is-critical" : ""} ${bossHitEffect.blocked ? "is-blocked" : ""}`}
                 style={{ left: `${damageTarget.x}%`, top: `${damageTarget.y}%` }}
                 aria-live="polite"
-              >{bossHitEffect.critical && <span className="boss-damage-critical">CRITICAL x3</span>}-{bossHitEffect.damage}</span>}
+              >{bossHitEffect.blocked ? "0" : <>{bossHitEffect.critical && <span className="boss-damage-critical">CRITICAL x3</span>}-{bossHitEffect.damage}</>}</span>}
             </div>
           </div>}
           {showBossGauge && <>
-            <span className={`boss-character-name ${bossDefeating ? "is-defeated" : ""}`}>{typhoonAppearance.name}</span>
+            <span className={`boss-character-name ${bossDefeating ? "is-defeated" : ""}`} style={{ left: `calc(50% + ${bossHorizontalOffset}px)` }}>{typhoonAppearance.name}</span>
             <span
               className={`boss-health-gauge ${bossDefeating ? "is-defeated" : ""}`}
+              style={{ left: `calc(50% + ${bossHorizontalOffset}px)` }}
               role="progressbar"
               aria-label={`${typhoonAppearance.name} HP`}
               aria-valuemin={0}
@@ -1301,12 +1505,12 @@ export default function GameWorldScene() {
             </div>
           </div>
           <div className="battle-command-list">
-            <button key={`fight-${battleActionPulse}`} className={battleAction === "fight" ? "is-selected" : ""} onClick={() => executeBattleCommand("fight")}><kbd>{formatKeyBinding(getPrimaryBinding(keyBindings, "fight"))}</kbd><span>{"\u305F\u305F\u304B\u3046"}</span></button>
-            <button key={`guard-${battleActionPulse}`} className={battleAction === "guard" ? "is-selected" : ""} onClick={() => executeBattleCommand("guard")}><kbd>{formatKeyBinding(getPrimaryBinding(keyBindings, "guard"))}</kbd><span>{"\u307E\u3082\u308B"}</span></button>
-            <button key={`heal-${battleActionPulse}`} disabled={displayedSp < currentMaxSp / 3} className={battleAction === "heal" ? "is-selected" : ""} onClick={() => executeBattleCommand("heal")}><kbd>{formatKeyBinding(getPrimaryBinding(keyBindings, "heal"))}</kbd><span>{"\u56DE\u5FA9"}</span></button>
+            <button key={`fight-${battleActionPulse}`} disabled={eyeBarrierLocked} className={battleAction === "fight" ? "is-selected" : ""} onClick={() => executeBattleCommand("fight")}><kbd>{formatKeyBinding(getPrimaryBinding(keyBindings, "fight"))}</kbd><span>{"\u305F\u305F\u304B\u3046"}</span></button>
+            <button key={`guard-${battleActionPulse}`} disabled={eyeBarrierLocked} className={battleAction === "guard" ? "is-selected" : ""} onClick={() => executeBattleCommand("guard")}><kbd>{formatKeyBinding(getPrimaryBinding(keyBindings, "guard"))}</kbd><span>{"\u307E\u3082\u308B"}</span></button>
+            <button key={`heal-${battleActionPulse}`} disabled={eyeBarrierLocked || displayedSp < currentMaxSp / 3} className={battleAction === "heal" ? "is-selected" : ""} onClick={() => executeBattleCommand("heal")}><kbd>{formatKeyBinding(getPrimaryBinding(keyBindings, "heal"))}</kbd><span>{"\u56DE\u5FA9"}</span></button>
             <button
               key={`special-${battleActionPulse}`}
-              disabled={specialChargeProgress < 100}
+              disabled={eyeBarrierLocked || specialChargeProgress < 100}
               className={`battle-special-command${battleAction === "special" ? " is-selected" : ""}`}
               style={{ "--special-charge-progress": `${specialChargeProgress}%` }}
               aria-label={`\u5FC5\u6BBA\u6280\u3001\u30C1\u30E3\u30FC\u30B8${Math.round(specialChargeProgress)}%`}
