@@ -21,9 +21,9 @@ const getTyphoonType = (intensity) => {
 };
 const BOSS_MAX_HP = { breeze: 1000, rain: 3000, gale: 5000, large: 10000, complex: 20000 };
 const BATTLE_JUMP_ATTACK_POSITION = 64;
-const BATTLE_JUMP_TRIGGER_RANGE = 30;
-const BATTLE_JUMP_LUNGE_DURATION = 540;
-const BATTLE_JUMP_LANDING_DURATION = 300;
+const BATTLE_JUMP_TRIGGER_RANGE = 15;
+const BATTLE_JUMP_LUNGE_DURATION = 180;
+const BATTLE_JUMP_LANDING_DURATION = 100;
 const FOCUS_TARGETS = [
   { id: "head", label: "\u982d", x: 50, y: 22 },
   { id: "eyes", label: "\u76ee", x: 50, y: 43 },
@@ -611,16 +611,15 @@ export default function GameWorldScene() {
     if (attackTarget.id === "foot") return false;
     if (pausedRef.current || !battleActiveRef.current || !battleCommandsReadyRef.current || !battleGroundedRef.current) return false;
     const currentPosition = battlePlayerLeftRef.current;
-    const distanceToAttackPosition = BATTLE_JUMP_ATTACK_POSITION - currentPosition;
-    if (Math.abs(distanceToAttackPosition) > BATTLE_JUMP_TRIGGER_RANGE) return false;
 
     const battleBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
     const bossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
     const battleHeight = battleBounds?.height || window.innerHeight;
     const playerContainerHeight = Math.max(100, Math.min(window.innerHeight * 0.21, 190));
     const attackLeft = battleBounds && bossBounds
-      ? Math.max(8, Math.min(90, ((bossBounds.left + (attackTarget.x / 100) * bossBounds.width - battleBounds.left) / battleBounds.width) * 100))
+      ? Math.max(0, Math.min(100, ((bossBounds.left + (attackTarget.x / 100) * bossBounds.width - battleBounds.left) / battleBounds.width) * 100))
       : BATTLE_JUMP_ATTACK_POSITION;
+    if (Math.abs(attackLeft - currentPosition) > BATTLE_JUMP_TRIGGER_RANGE) return false;
     const attackTop = battleBounds && bossBounds
       ? Math.max(40, Math.min(battleHeight - 40, bossBounds.top + (attackTarget.y / 100) * bossBounds.height - battleBounds.top))
       : battleHeight * 0.45;
@@ -692,11 +691,34 @@ export default function GameWorldScene() {
 
     const attackPower = Math.max(1, Number(player.equippedWeapon?.attack) || 10);
     const attackBoss = (baseDamage) => {
-      const randomTargetId = FOCUS_TARGETS[Math.floor(Math.random() * FOCUS_TARGETS.length)].id;
-      const randomHandSide = Math.random() < 0.5 ? "left" : "right";
+      const battleBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
+      const bossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
+      const playerBounds = document.querySelector(".strike-player-position img")?.getBoundingClientRect();
+      const nearbyTargets = [
+        ...FOCUS_TARGETS.filter((target) => target.id !== "hand").map((target) => getAdjustedFocusTarget(target.id, bossType, handSide)),
+        getAdjustedFocusTarget("hand-left", bossType, handSide),
+        getAdjustedFocusTarget("hand-right", bossType, handSide)
+      ];
       const attackTarget = focusModeRef.current
         ? focusTarget
-        : getAdjustedFocusTarget(randomTargetId, bossType, randomTargetId === "hand" ? randomHandSide : handSide);
+        : bossBounds && playerBounds
+          ? nearbyTargets.reduce((nearest, candidate) => {
+            const candidateX = bossBounds.left + (candidate.x / 100) * bossBounds.width;
+            const candidateY = bossBounds.top + (candidate.y / 100) * bossBounds.height;
+            const playerX = playerBounds.left + playerBounds.width / 2;
+            const playerY = playerBounds.top + playerBounds.height / 2;
+            const candidateDistance = Math.hypot(candidateX - playerX, candidateY - playerY);
+            const nearestX = bossBounds.left + (nearest.x / 100) * bossBounds.width;
+            const nearestY = bossBounds.top + (nearest.y / 100) * bossBounds.height;
+            const nearestDistance = Math.hypot(nearestX - playerX, nearestY - playerY);
+            return candidateDistance < nearestDistance ? candidate : nearest;
+          })
+          : getAdjustedFocusTarget("head", bossType, handSide);
+      const attackLeft = battleBounds && bossBounds
+        ? ((bossBounds.left + (attackTarget.x / 100) * bossBounds.width - battleBounds.left) / battleBounds.width) * 100
+        : BATTLE_JUMP_ATTACK_POSITION;
+      if (Math.abs(attackLeft - battlePlayerLeftRef.current) > BATTLE_JUMP_TRIGGER_RANGE) return false;
+
       const focusMultiplier = attackTarget.id === "eyes" ? 2 : 1;
       const critical = Math.random() < 0.03;
       const finalDamage = baseDamage * focusMultiplier * (critical ? 3 : 1);
@@ -704,6 +726,7 @@ export default function GameWorldScene() {
         dealBossDamage(finalDamage, critical, attackTarget);
       });
       if (!startedJump) dealBossDamage(finalDamage, critical, attackTarget);
+      return true;
     };
     if (command === "fight") attackBoss(attackPower);
     if (command === "guard") return;
@@ -717,10 +740,11 @@ export default function GameWorldScene() {
       }));
     }
     if (command === "special") {
-      specialChargeProgressRef.current = 0;
-      setSpecialChargeProgress(0);
-      setSpecialChargeCycle((cycle) => cycle + 1);
-      attackBoss(attackPower * 3);
+      if (attackBoss(attackPower * 3)) {
+        specialChargeProgressRef.current = 0;
+        setSpecialChargeProgress(0);
+        setSpecialChargeCycle((cycle) => cycle + 1);
+      }
     }
   };
   battleCommandHandlerRef.current = executeBattleCommand;
@@ -743,7 +767,7 @@ export default function GameWorldScene() {
       if (battleActiveRef.current) {
         setBattlePlayerHasMoved(true);
         const battleStep = 3.6;
-        const nextLeft = Math.max(8, Math.min(90, battlePlayerLeftRef.current + direction * battleStep));
+        const nextLeft = Math.max(0, Math.min(100, battlePlayerLeftRef.current + direction * battleStep));
         battlePlayerLeftRef.current = nextLeft;
         setBattlePlayerLeft(nextLeft);
         return;
@@ -1069,7 +1093,6 @@ export default function GameWorldScene() {
   const damageTarget = bossHitEffect
     ? getAdjustedFocusTarget(bossHitEffect.targetId, bossHitEffect.typhoonType || bossType, handSide)
     : focusTarget;
-
   const completeBossDefeat = () => {
     if (bossDefeatedRef.current || !typhoonAppearance) return;
     bossDefeatedRef.current = true;
