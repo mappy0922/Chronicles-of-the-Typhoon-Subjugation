@@ -25,6 +25,8 @@ const BATTLE_JUMP_TRIGGER_RANGE = 15;
 const BATTLE_JUMP_TARGET_STANDOFF = 6;
 const BATTLE_JUMP_LUNGE_DURATION = 180;
 const BATTLE_JUMP_LANDING_DURATION = 100;
+const BATTLE_ATTACK_FRAME_INTERVAL = 150;
+const BATTLE_ATTACK_MASH_WINDOW = 280;
 const SPECIAL_CHARGE_DURATION = 300_000;
 const FOCUS_TARGETS = [
   { id: "head", label: "\u982d", x: 50, y: 22 },
@@ -303,6 +305,9 @@ export default function GameWorldScene() {
   const [battleJumpActive, setBattleJumpActive] = useState(false);
   const [battleJumpFlipped, setBattleJumpFlipped] = useState(false);
   const [battleJumpTargetTop, setBattleJumpTargetTop] = useState(null);
+  const [battleAttackFrame, setBattleAttackFrame] = useState(null);
+  const [battleJumpAttackFrame, setBattleJumpAttackFrame] = useState(null);
+  const [battleAttackFlipped, setBattleAttackFlipped] = useState(false);
   const [moving, setMoving] = useState(false);
   const [facing, setFacing] = useState(1);
   const [fastWalking, setFastWalking] = useState(false);
@@ -315,6 +320,7 @@ export default function GameWorldScene() {
   const [bossFlipped, setBossFlipped] = useState(false);
   const [bossHorizontalOffset, setBossHorizontalOffset] = useState(0);
   const [eyeBarrierPhase, setEyeBarrierPhaseValue] = useState("inactive");
+  const [eyeBarrierRevealOrder, setEyeBarrierRevealOrder] = useState(() => EYE_BARRIER_CELLS.map((_, index) => index));
   const [battleFollowingBoss, setBattleFollowingBoss] = useState(false);
   const [showBossGauge, setShowBossGauge] = useState(false);
   const [bossGaugeCharge, setBossGaugeCharge] = useState(0);
@@ -348,7 +354,29 @@ export default function GameWorldScene() {
   const eyeBarrierRevealCheckRef = useRef(null);
   const freezeBattlePlayerRef = useRef(null);
   const battleJumpActiveRef = useRef(battleJumpActive);
+  const battleAttackPhaseRef = useRef("none");
+  const battleAttackFrameTimerRef = useRef(null);
+  const battleJumpAttackFrameTimerRef = useRef(null);
+  const battleJumpAttackMashRemainingRef = useRef(0);
+  const battleJumpAttackHasRepeatedRef = useRef(false);
+  const battleJumpAttackFrameIndexRef = useRef(0);
+  const battleJumpAttackReadyRef = useRef(false);
+  const battleJumpAttackHitRef = useRef(null);
+  const battleAttackMashRemainingRef = useRef(0);
+  const battleAttackHasRepeatedRef = useRef(false);
+  const battleAttackFrameIndexRef = useRef(0);
+  const battleFootAttackTimerActiveRef = useRef(false);
+  const battleJumpUsesMashAttackRef = useRef(false);
+  const battleJumpGroundTopRef = useRef(null);
+  const finishBattleJumpRef = useRef(null);
+  const stopGroundedFootAttackRef = useRef(null);
   const battleGroundedRef = useRef(true);
+  const changeJumpAttackFrame = (frame) => {
+    setBattleJumpAttackFrame(frame);
+  };
+  const resetJumpAttackFrames = () => {
+    setBattleJumpAttackFrame(null);
+  };
   const transitionRef = useRef("idle");
   const lastMapTransitionWasTyphoonRef = useRef(false);
   const strikeActiveRef = useRef(false);
@@ -365,22 +393,34 @@ export default function GameWorldScene() {
   const battleCommandsReadyRef = useRef(false);
   const battleCommandHandlerRef = useRef(null);
   const battleFocusHandlerRef = useRef(null);
+  const bossFlippedRef = useRef(bossFlipped);
   const battleActionTimeoutRef = useRef(null);
   const bossHitTimeoutRef = useRef(null);
   const bossHitCounterRef = useRef(0);
   const bossDefeatedRef = useRef(false);
   const bossGaugeChargeRef = useRef(0);
+  const bossGaugeDamageRef = useRef(bossGaugeDamage);
   const bossGaugeTrailRef = useRef(bossGaugeTrail);
   const spRegenProgressRef = useRef(0);
   const specialChargeProgressRef = useRef(0);
   const pausedRef = useRef(isPaused);
   pausedRef.current = isPaused;
   bossGaugeChargeRef.current = bossGaugeCharge;
+  bossGaugeDamageRef.current = bossGaugeDamage;
   bossGaugeTrailRef.current = bossGaugeTrail;
   positionRef.current = position;
   battlePlayerLeftRef.current = battlePlayerLeft;
   battleJumpActiveRef.current = battleJumpActive;
+  bossFlippedRef.current = bossFlipped;
   const setEyeBarrierPhase = (phase) => {
+    if (phase === "revealing") {
+      const revealOrder = EYE_BARRIER_CELLS.map((_, index) => index);
+      for (let index = revealOrder.length - 1; index > 0; index -= 1) {
+        const randomIndex = Math.floor(Math.random() * (index + 1));
+        [revealOrder[index], revealOrder[randomIndex]] = [revealOrder[randomIndex], revealOrder[index]];
+      }
+      setEyeBarrierRevealOrder(revealOrder);
+    }
     eyeBarrierPhaseRef.current = phase;
     setEyeBarrierPhaseValue(phase);
   };
@@ -401,6 +441,8 @@ export default function GameWorldScene() {
     }
     setBattleFollowingBoss(false);
     setMoving(false);
+    if (battleFootAttackTimerActiveRef.current) stopGroundedFootAttackRef.current?.();
+    finishBattleJumpRef.current?.();
   };
   const bossGaugeProgress = Math.max(0, bossGaugeCharge - bossGaugeDamage);
   const grass = useMemo(() => makeGrass(1200), []);
@@ -464,13 +506,13 @@ export default function GameWorldScene() {
         bossMovementInProgressRef.current = false;
         eyeBarrierRevealCheckRef.current?.();
       }, 700);
-      if (battleJumpActiveRef.current) {
+      if (battleJumpActiveRef.current && battleAttackPhaseRef.current === "attack" && battleJumpAttackReadyRef.current) {
         const nextPlayerLeft = Math.max(0, Math.min(100, battlePlayerLeftRef.current + (offsetDelta / encounterBounds.width) * 100));
         battlePlayerLeftRef.current = nextPlayerLeft;
         setBattlePlayerLeft(nextPlayerLeft);
         setBattleFollowingBoss(true);
         window.clearTimeout(bossFollowTimeoutRef.current);
-        bossFollowTimeoutRef.current = window.setTimeout(() => setBattleFollowingBoss(false), 250);
+        bossFollowTimeoutRef.current = window.setTimeout(() => setBattleFollowingBoss(false), 700);
       }
     }, 1800);
 
@@ -485,10 +527,25 @@ export default function GameWorldScene() {
       movementInterval.current = null;
       window.clearInterval(battleActionTimeoutRef.current);
       window.clearInterval(bossHitTimeoutRef.current);
+      window.clearInterval(battleAttackFrameTimerRef.current);
+      window.clearInterval(battleJumpAttackFrameTimerRef.current);
       movementLockedRef.current = false;
       strikeActiveRef.current = false;
       bossDefeatedRef.current = false;
       battleGroundedRef.current = true;
+      battleJumpActiveRef.current = false;
+      battleAttackPhaseRef.current = "none";
+      battleJumpAttackReadyRef.current = false;
+      battleJumpAttackHitRef.current = null;
+      battleJumpAttackHasRepeatedRef.current = false;
+      battleJumpAttackMashRemainingRef.current = 0;
+      resetJumpAttackFrames();
+      battleAttackMashRemainingRef.current = 0;
+      battleAttackHasRepeatedRef.current = false;
+      battleFootAttackTimerActiveRef.current = false;
+      battleJumpUsesMashAttackRef.current = false;
+      setBattleAttackFrame(null);
+      setBattleAttackFlipped(false);
       setBattleJumpActive(false);
       setBattleJumpTargetTop(null);
       setBattleActive(false);
@@ -528,6 +585,92 @@ export default function GameWorldScene() {
     return timerId;
   };
 
+  finishBattleJumpRef.current = () => {
+    if (!battleJumpActiveRef.current || battleAttackPhaseRef.current === "landing") return;
+    window.clearInterval(battleAttackFrameTimerRef.current);
+    battleAttackFrameTimerRef.current = null;
+    window.clearInterval(battleJumpAttackFrameTimerRef.current);
+    battleJumpAttackFrameTimerRef.current = null;
+    battleAttackPhaseRef.current = "landing";
+    battleJumpUsesMashAttackRef.current = false;
+    battleJumpAttackReadyRef.current = false;
+    battleJumpAttackHitRef.current = null;
+    battleJumpAttackHasRepeatedRef.current = false;
+    battleJumpAttackMashRemainingRef.current = 0;
+    battleAttackHasRepeatedRef.current = false;
+    setBattleAttackFrame(null);
+    resetJumpAttackFrames();
+    setBattleFollowingBoss(false);
+    setBattleJumpTargetTop(battleJumpGroundTopRef.current);
+    const landingTimer = scheduleWhileUnpaused(() => {
+      transitionTimers.current = transitionTimers.current.filter((timer) => timer !== landingTimer);
+      battleGroundedRef.current = true;
+      battleJumpActiveRef.current = false;
+      battleAttackPhaseRef.current = "none";
+      battleJumpUsesMashAttackRef.current = false;
+      battleJumpAttackReadyRef.current = false;
+      setBattleJumpActive(false);
+      setBattleJumpFlipped(false);
+      setBattleJumpTargetTop(null);
+      setBattleFollowingBoss(false);
+      eyeBarrierRevealCheckRef.current?.();
+    }, BATTLE_JUMP_LANDING_DURATION);
+    transitionTimers.current.push(landingTimer);
+  };
+
+  const startGroundedFootAttack = (flipped) => {
+    setBattleAttackFlipped(flipped);
+    setBattleFollowingBoss(false);
+    if (battleAttackPhaseRef.current === "attack" && battleFootAttackTimerActiveRef.current) {
+      battleAttackHasRepeatedRef.current = true;
+      battleAttackMashRemainingRef.current = BATTLE_ATTACK_MASH_WINDOW;
+      return;
+    }
+
+    window.clearInterval(battleAttackFrameTimerRef.current);
+    battleAttackFrameIndexRef.current = 0;
+    battleAttackPhaseRef.current = "attack";
+    battleJumpUsesMashAttackRef.current = true;
+    battleAttackHasRepeatedRef.current = false;
+    battleAttackMashRemainingRef.current = 0;
+    battleFootAttackTimerActiveRef.current = true;
+    setBattleAttackFrame(1);
+    battleAttackFrameTimerRef.current = window.setInterval(() => {
+      if (pausedRef.current || battleAttackPhaseRef.current !== "attack") return;
+      const currentFrameIndex = battleAttackFrameIndexRef.current;
+      const stillMashing = battleAttackHasRepeatedRef.current && battleAttackMashRemainingRef.current > 0;
+      if (currentFrameIndex >= 2 && !stillMashing) {
+        window.clearInterval(battleAttackFrameTimerRef.current);
+        battleAttackFrameTimerRef.current = null;
+        battleAttackPhaseRef.current = "none";
+        battleJumpUsesMashAttackRef.current = false;
+        battleAttackHasRepeatedRef.current = false;
+        battleFootAttackTimerActiveRef.current = false;
+        setBattleAttackFrame(null);
+        setBattleAttackFlipped(false);
+        setBattleFollowingBoss(false);
+        return;
+      }
+      const attackFrames = [1, 2, 3, 2, 1, 2];
+      battleAttackFrameIndexRef.current = (currentFrameIndex + 1) % attackFrames.length;
+      setBattleAttackFrame(attackFrames[battleAttackFrameIndexRef.current]);
+      if (stillMashing) battleAttackMashRemainingRef.current = Math.max(0, battleAttackMashRemainingRef.current - BATTLE_ATTACK_FRAME_INTERVAL);
+    }, BATTLE_ATTACK_FRAME_INTERVAL);
+  };
+  stopGroundedFootAttackRef.current = () => {
+    if (!battleFootAttackTimerActiveRef.current) return;
+    window.clearInterval(battleAttackFrameTimerRef.current);
+    battleAttackFrameTimerRef.current = null;
+    battleAttackPhaseRef.current = "none";
+    battleJumpUsesMashAttackRef.current = false;
+    battleAttackHasRepeatedRef.current = false;
+    battleAttackMashRemainingRef.current = 0;
+    battleFootAttackTimerActiveRef.current = false;
+    setBattleAttackFrame(null);
+    setBattleAttackFlipped(false);
+    setBattleFollowingBoss(false);
+  };
+
   useEffect(() => {
     const frameSources = [
       "/right_1.png",
@@ -541,6 +684,12 @@ export default function GameWorldScene() {
       "/idle-cutout.png",
       ...MALE_BATTLE_RIGHT_WALK_FRAMES,
       ...MALE_BATTLE_LEFT_WALK_FRAMES,
+      "/man_attack1.png",
+      "/man_attack2.png",
+      "/man_attack3.png",
+      "/man_attack_jump2-cutout.png",
+      "/man_attack_jump3-cutout.png",
+      "/man_battle_jump-cutout.png",
       ...FEMALE_BATTLE_RIGHT_WALK_FRAMES,
       ...FEMALE_BATTLE_LEFT_WALK_FRAMES,
       "/\u7537\u6027\u52DD\u5229.png",
@@ -712,6 +861,8 @@ export default function GameWorldScene() {
   useEffect(() => () => {
     window.clearInterval(battleActionTimeoutRef.current);
     window.clearInterval(bossHitTimeoutRef.current);
+    window.clearInterval(battleAttackFrameTimerRef.current);
+    window.clearInterval(battleJumpAttackFrameTimerRef.current);
     window.clearTimeout(bossFollowTimeoutRef.current);
     window.clearTimeout(bossMovementTimeoutRef.current);
   }, []);
@@ -731,6 +882,7 @@ export default function GameWorldScene() {
   const startGroundedJumpToAttack = (attackTarget, onImpact) => {
     if (attackTarget.id === "foot") return false;
     if (pausedRef.current || !battleActiveRef.current || !battleCommandsReadyRef.current || !battleGroundedRef.current) return false;
+    if (battleFootAttackTimerActiveRef.current) stopGroundedFootAttackRef.current?.();
     const currentPosition = battlePlayerLeftRef.current;
 
     const battleBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
@@ -741,23 +893,32 @@ export default function GameWorldScene() {
       ? Math.max(0, Math.min(100, ((bossBounds.left + (attackTarget.x / 100) * bossBounds.width - battleBounds.left) / battleBounds.width) * 100))
       : BATTLE_JUMP_ATTACK_POSITION;
     if (Math.abs(attackLeft - currentPosition) > BATTLE_JUMP_TRIGGER_RANGE) return false;
-    const jumpLandingLeft = Math.max(0, Math.min(100, attackLeft + (currentPosition < attackLeft ? -BATTLE_JUMP_TARGET_STANDOFF : BATTLE_JUMP_TARGET_STANDOFF)));
+    const attackPointX = battleBounds ? battleBounds.left + (attackLeft / 100) * battleBounds.width : attackLeft;
+    const currentPlayerX = battleBounds ? battleBounds.left + (currentPosition / 100) * battleBounds.width : currentPosition;
+    const attackSide = currentPlayerX < attackPointX ? -1 : 1;
+    const jumpLandingLeft = Math.max(0, Math.min(100, attackLeft + attackSide * BATTLE_JUMP_TARGET_STANDOFF));
     const attackTop = battleBounds && bossBounds
       ? Math.max(40, Math.min(battleHeight - 40, bossBounds.top + (attackTarget.y / 100) * bossBounds.height - battleBounds.top))
       : battleHeight * 0.45;
     const groundTop = battleHeight * 0.8 - playerContainerHeight / 2;
-    const playerImageBounds = document.querySelector(".strike-player-position img")?.getBoundingClientRect();
-    const playerBackX = playerImageBounds
-      ? facing < 0 ? playerImageBounds.right : playerImageBounds.left
-      : (battleBounds?.left || 0) + (currentPosition / 100) * (battleBounds?.width || window.innerWidth) - facing * 60;
-    const attackPointX = battleBounds ? battleBounds.left + (attackLeft / 100) * battleBounds.width : attackLeft;
 
     battleGroundedRef.current = false;
+    battleJumpActiveRef.current = true;
+    battleJumpUsesMashAttackRef.current = false;
+    battleJumpAttackReadyRef.current = isMale;
+    battleJumpAttackHitRef.current = onImpact;
+    battleJumpAttackHasRepeatedRef.current = false;
+    battleJumpAttackMashRemainingRef.current = 0;
+    battleJumpAttackFrameIndexRef.current = 0;
+    battleAttackPhaseRef.current = "jump";
+    battleJumpGroundTopRef.current = groundTop;
     setBattleJumpActive(true);
-    setBattleJumpFlipped(playerBackX > attackPointX);
+    setBattleAttackFrame(null);
+    resetJumpAttackFrames();
+    setBattleJumpFlipped(attackSide > 0);
     setBattleJumpTargetTop(attackTop);
     setBattlePlayerHasMoved(true);
-    setFacing(currentPosition > attackLeft ? -1 : 1);
+    setFacing(attackSide > 0 ? -1 : 1);
     setMoving(false);
     if (movementInterval.current) {
       window.clearInterval(movementInterval.current);
@@ -767,25 +928,69 @@ export default function GameWorldScene() {
     setBattlePlayerLeft(jumpLandingLeft);
     const impactTimer = scheduleWhileUnpaused(() => {
       transitionTimers.current = transitionTimers.current.filter((timer) => timer !== impactTimer);
-      setBattleJumpTargetTop(groundTop);
+      if (!isMale) {
+        setBattleJumpTargetTop(groundTop);
+        battleAttackPhaseRef.current = "landing";
+        onImpact?.();
+        if (battleAttackPhaseRef.current !== "landing") return;
+        const landingTimer = scheduleWhileUnpaused(() => {
+          transitionTimers.current = transitionTimers.current.filter((timer) => timer !== landingTimer);
+          battleGroundedRef.current = true;
+          battleJumpActiveRef.current = false;
+          battleAttackPhaseRef.current = "none";
+          battleJumpUsesMashAttackRef.current = false;
+          battleJumpAttackReadyRef.current = false;
+          battleJumpAttackHitRef.current = null;
+          setBattleJumpActive(false);
+          setBattleJumpFlipped(false);
+          window.clearTimeout(bossFollowTimeoutRef.current);
+          setBattleFollowingBoss(false);
+          setBattleJumpTargetTop(null);
+          eyeBarrierRevealCheckRef.current?.();
+        }, BATTLE_JUMP_LANDING_DURATION);
+        transitionTimers.current.push(landingTimer);
+        return;
+      }
+      battleAttackPhaseRef.current = "attack";
+      if (battleJumpAttackHasRepeatedRef.current) {
+        battleJumpAttackMashRemainingRef.current = BATTLE_ATTACK_MASH_WINDOW;
+      }
+      changeJumpAttackFrame(2);
       onImpact?.();
-      const landingTimer = scheduleWhileUnpaused(() => {
-        transitionTimers.current = transitionTimers.current.filter((timer) => timer !== landingTimer);
-        battleGroundedRef.current = true;
-        setBattleJumpActive(false);
-        setBattleJumpFlipped(false);
-        window.clearTimeout(bossFollowTimeoutRef.current);
-        setBattleFollowingBoss(false);
-        setBattleJumpTargetTop(null);
-        eyeBarrierRevealCheckRef.current?.();
-      }, BATTLE_JUMP_LANDING_DURATION);
-      transitionTimers.current.push(landingTimer);
+      if (battleAttackPhaseRef.current !== "attack") return;
+      window.clearInterval(battleJumpAttackFrameTimerRef.current);
+      battleJumpAttackFrameIndexRef.current = 0;
+      battleJumpAttackFrameTimerRef.current = window.setInterval(() => {
+        if (pausedRef.current || battleAttackPhaseRef.current !== "attack") return;
+        const repeated = battleJumpAttackHasRepeatedRef.current;
+        const mashStillActive = repeated && battleJumpAttackMashRemainingRef.current > 0;
+        if (!mashStillActive && battleJumpAttackFrameIndexRef.current >= 1) {
+          finishBattleJumpRef.current?.();
+          return;
+        }
+        const frames = [2, 3, 2, "jump", 2, 3];
+        battleJumpAttackFrameIndexRef.current = repeated
+          ? (battleJumpAttackFrameIndexRef.current + 1) % frames.length
+          : 1;
+        changeJumpAttackFrame(frames[battleJumpAttackFrameIndexRef.current]);
+        if (mashStillActive) {
+          battleJumpAttackMashRemainingRef.current = Math.max(0, battleJumpAttackMashRemainingRef.current - BATTLE_ATTACK_FRAME_INTERVAL);
+        }
+      }, BATTLE_ATTACK_FRAME_INTERVAL);
     }, BATTLE_JUMP_LUNGE_DURATION);
     transitionTimers.current.push(impactTimer);
     return true;
   };
 
   const executeBattleCommand = (command) => {
+    if (command === "fight" && !pausedRef.current && battleCommandsReadyRef.current && battleJumpAttackReadyRef.current && !battleGroundedRef.current
+      && eyeBarrierPhaseRef.current !== "pending" && eyeBarrierPhaseRef.current !== "revealing"
+      && ["jump", "attack"].includes(battleAttackPhaseRef.current)) {
+      battleJumpAttackHasRepeatedRef.current = true;
+      battleJumpAttackMashRemainingRef.current = BATTLE_ATTACK_MASH_WINDOW;
+      if (battleAttackPhaseRef.current === "attack") battleJumpAttackHitRef.current?.();
+      return;
+    }
     if (pausedRef.current || !battleCommandsReadyRef.current || !battleGroundedRef.current || eyeBarrierPhaseRef.current === "pending" || eyeBarrierPhaseRef.current === "revealing") return;
     const maxHp = computedStats.maxHp || player.maxHp || 500;
     const maxSp = player.maxSp || 100;
@@ -799,7 +1004,9 @@ export default function GameWorldScene() {
     battleActionTimeoutRef.current = scheduleWhileUnpaused(() => setBattleAction(null), 220);
 
     const dealBossDamage = (damage, critical, target) => {
-      if (target.id === "eyes" && bossCurrentHp > 0 && bossCurrentHp <= bossMaxHp / 2) {
+      const currentGaugeProgress = Math.max(0, bossGaugeChargeRef.current - bossGaugeDamageRef.current);
+      const currentBossHp = Math.round((bossMaxHp * currentGaugeProgress) / 100);
+      if (target.id === "eyes" && currentBossHp > 0 && currentBossHp <= bossMaxHp / 2) {
         bossHitCounterRef.current += 1;
         setBossHitEffect({ id: bossHitCounterRef.current, damage: 0, targetId: target.id, typhoonType: bossType, critical: false, blocked: true });
         window.clearInterval(bossHitTimeoutRef.current);
@@ -807,12 +1014,12 @@ export default function GameWorldScene() {
         return;
       }
       const damageAsGaugePercent = (damage / bossMaxHp) * 100;
-      const actualProgressDamage = Math.min(damageAsGaugePercent, bossGaugeProgress);
+      const actualProgressDamage = Math.min(damageAsGaugePercent, currentGaugeProgress);
       if (actualProgressDamage <= 0) return;
-      const actualHpDamage = Math.min(bossCurrentHp, Math.max(1, Math.round((bossMaxHp * actualProgressDamage) / 100)));
-      const nextBossHp = Math.max(0, bossCurrentHp - actualHpDamage);
-      setBossGaugeTrail((currentTrail) => Math.max(currentTrail, bossGaugeProgress));
-      const defeatsBoss = damage >= bossCurrentHp;
+      const actualHpDamage = Math.min(currentBossHp, Math.max(1, Math.round((bossMaxHp * actualProgressDamage) / 100)));
+      const nextBossHp = Math.max(0, currentBossHp - actualHpDamage);
+      setBossGaugeTrail((currentTrail) => Math.max(currentTrail, currentGaugeProgress));
+      const defeatsBoss = damage >= currentBossHp;
       setBossGaugeDamage((currentDamage) => Math.min(100, currentDamage + actualProgressDamage));
       bossHitCounterRef.current += 1;
       setBossHitEffect({ id: bossHitCounterRef.current, damage: actualHpDamage, targetId: target.id, typhoonType: bossType, critical });
@@ -831,6 +1038,8 @@ export default function GameWorldScene() {
         setBattleCommandsReady(false);
         setBossGaugeCharging(false);
         setBossGaugeDamage(100);
+        finishBattleJumpRef.current?.();
+        stopGroundedFootAttackRef.current?.();
       } else {
         bossHitTimeoutRef.current = scheduleWhileUnpaused(() => setBossHitEffect(null), 900);
       }
@@ -861,22 +1070,40 @@ export default function GameWorldScene() {
             return candidateDistance < nearestDistance ? candidate : nearest;
           })
           : getAdjustedFocusTarget("head", bossType, handSide);
+      const bossFlippedAtAttackStart = bossFlipped;
       const attackLeft = battleBounds && bossBounds
         ? ((bossBounds.left + (attackTarget.x / 100) * bossBounds.width - battleBounds.left) / battleBounds.width) * 100
         : BATTLE_JUMP_ATTACK_POSITION;
-      if (Math.abs(attackLeft - battlePlayerLeftRef.current) > BATTLE_JUMP_TRIGGER_RANGE) return false;
+      if (Math.abs(attackLeft - battlePlayerLeftRef.current) > BATTLE_JUMP_TRIGGER_RANGE) {
+        if (command === "fight") {
+          window.clearInterval(bossHitTimeoutRef.current);
+          setBossHitEffect(null);
+          if (isMale) {
+            setBattlePlayerHasMoved(true);
+            startGroundedFootAttack(facing > 0);
+          }
+        }
+        return false;
+      }
+      let attackFacing = facing;
       if (attackTarget.id === "foot") {
         setBattlePlayerHasMoved(true);
-        setFacing(battlePlayerLeftRef.current > attackLeft ? -1 : 1);
+        attackFacing = battlePlayerLeftRef.current > attackLeft ? -1 : 1;
+        setFacing(attackFacing);
       }
 
       const focusMultiplier = attackTarget.id === "eyes" ? 2 : 1;
-      const critical = Math.random() < 0.03;
-      const finalDamage = baseDamage * focusMultiplier * (critical ? 3 : 1);
-      const startedJump = startGroundedJumpToAttack(attackTarget, () => {
+      const isHandTarget = attackTarget.id === "hand-left" || attackTarget.id === "hand-right" || attackTarget.id === "hand";
+      const applyAttackHit = () => {
+        if (isHandTarget && bossFlippedRef.current !== bossFlippedAtAttackStart) return;
+        const critical = Math.random() < 0.03;
+        const finalDamage = baseDamage * focusMultiplier * (critical ? 3 : 1);
         dealBossDamage(finalDamage, critical, attackTarget);
-      });
-      if (!startedJump) dealBossDamage(finalDamage, critical, attackTarget);
+      };
+      const mashAttack = command === "fight" && attackTarget.id === "foot" && isMale;
+      if (mashAttack) startGroundedFootAttack(attackFacing > 0);
+      const startedJump = startGroundedJumpToAttack(attackTarget, applyAttackHit);
+      if (!startedJump) applyAttackHit();
       return true;
     };
     if (command === "fight") attackBoss(attackPower);
@@ -962,6 +1189,12 @@ export default function GameWorldScene() {
       const command = ["fight", "guard", "heal", "special"].find((action) => matchesKeyBinding(bindings, action, event));
       const moveLeft = matchesKeyBinding(bindings, "moveLeft", event);
       const moveRight = matchesKeyBinding(bindings, "moveRight", event);
+      if ((moveLeft || moveRight) && battleActiveRef.current && battleJumpActiveRef.current
+        && ["jump", "attack", "landing"].includes(battleAttackPhaseRef.current)) {
+        event.preventDefault();
+        stopMovement();
+        return;
+      }
       if (movementLockedRef.current) {
         if (command) {
           event.preventDefault();
@@ -1143,6 +1376,20 @@ export default function GameWorldScene() {
   const isStrike = weatherInfo.adminForced ? adminStrike : proximityInfo.alertPhase === "strike";
   useEffect(() => {
     if (!isStrike) {
+      window.clearInterval(battleAttackFrameTimerRef.current);
+      window.clearInterval(battleJumpAttackFrameTimerRef.current);
+      battleAttackPhaseRef.current = "none";
+      battleJumpAttackReadyRef.current = false;
+      battleJumpAttackHitRef.current = null;
+      battleJumpAttackHasRepeatedRef.current = false;
+      battleJumpAttackMashRemainingRef.current = 0;
+      battleJumpUsesMashAttackRef.current = false;
+      battleAttackMashRemainingRef.current = 0;
+      battleAttackHasRepeatedRef.current = false;
+      battleFootAttackTimerActiveRef.current = false;
+      battleJumpActiveRef.current = false;
+      setBattleAttackFrame(null);
+      resetJumpAttackFrames();
       strikeActiveRef.current = false;
       movementLockedRef.current = false;
       transitionTimers.current.forEach((timer) => window.clearInterval(timer));
@@ -1188,6 +1435,19 @@ export default function GameWorldScene() {
     setBossDefeating(false);
     setBossFullyDefeated(false);
     battleGroundedRef.current = true;
+    battleAttackPhaseRef.current = "none";
+    battleJumpAttackReadyRef.current = false;
+    battleJumpAttackHitRef.current = null;
+    battleJumpAttackHasRepeatedRef.current = false;
+    battleJumpAttackMashRemainingRef.current = 0;
+    battleJumpUsesMashAttackRef.current = false;
+    battleAttackMashRemainingRef.current = 0;
+    battleAttackHasRepeatedRef.current = false;
+    battleFootAttackTimerActiveRef.current = false;
+    window.clearInterval(battleAttackFrameTimerRef.current);
+    window.clearInterval(battleJumpAttackFrameTimerRef.current);
+    setBattleAttackFrame(null);
+    resetJumpAttackFrames();
     setBattleJumpActive(false);
     setBattleJumpTargetTop(null);
       battlePlayerLeftRef.current = 24;
@@ -1372,11 +1632,17 @@ export default function GameWorldScene() {
       {(mapTransition === "loading" || mapTransition === "fade-in") && <div className={`map-loading-indicator ${mapTransition === "fade-in" ? "is-fading" : ""}`}>{"\u30ED\u30FC\u30C9\u4E2D..."}</div>}
       {(mapTransition === "fade-out" || mapTransition === "loading") && <div className={`map-transition-curtain ${mapTransition === "fade-out" ? "is-fading-out" : ""}`} aria-hidden="true" />}
       {battleActive && typhoonAppearance && <div className="strike-encounter" aria-label="\u4E3B\u4EBA\u516C\u3068\u53F0\u98A8\u306E\u5BFE\u5CD9">
-        <div className={`strike-player-position ${battleJumpActive ? "is-jumping" : ""} ${battleFollowingBoss ? "is-following-boss" : ""} ${eyeBarrierLocked ? "is-barrier-locked" : ""}`} style={{ left: `${battlePlayerLeft}%`, top: battleJumpActive && battleJumpTargetTop !== null ? `${battleJumpTargetTop}px` : undefined }}>
+        <div className={`strike-player-position ${battleJumpActive ? "is-jumping" : ""} ${battleAttackFrame || battleJumpAttackFrame ? "is-attacking" : ""} ${battleFollowingBoss ? "is-following-boss" : ""} ${eyeBarrierLocked ? "is-barrier-locked" : ""}`} style={{ left: `${battlePlayerLeft}%`, top: battleJumpActive && battleJumpTargetTop !== null ? `${battleJumpTargetTop}px` : undefined }}>
           <span className="world-player-shadow battle-player-shadow" aria-hidden="true" />
           <img
-            src={battleJumpActive
-              ? isMale ? "/man_battle_jump-cutout.png" : "/woman_battle_jump-cutout.png"
+            src={isMale && battleJumpAttackFrame === "jump"
+              ? "/man_battle_jump-cutout.png"
+              : isMale && (battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3)
+                ? `/man_attack_jump${battleJumpAttackFrame}-cutout.png`
+              : isMale && battleAttackFrame
+              ? `/man_attack${battleAttackFrame}.png`
+              : battleJumpActive
+                ? isMale ? "/man_battle_jump-cutout.png" : "/woman_battle_jump-cutout.png"
               : isMale
                 ? moving
                   ? (facing < 0 ? MALE_BATTLE_LEFT_WALK_FRAMES : MALE_BATTLE_RIGHT_WALK_FRAMES)[(walkFrame - 1) % MALE_BATTLE_LEFT_WALK_FRAMES.length]
@@ -1389,7 +1655,11 @@ export default function GameWorldScene() {
                     ? facing < 0 ? "/left_woman_battle_idle.png" : "/right_woman_battle_idle.png"
                     : "/woman_battle_idle.png"}
             alt={isMale ? "\u7537\u6027\u5263\u58EB" : "\u5973\u6027\u5263\u58EB"}
-            className={`${!isMale ? "female-battle-character" : ""} ${battleJumpActive && battleJumpFlipped ? "is-flipped" : ""}`.trim()}
+            style={{
+              ...(battleAttackFrame ? { "--attack-baseline-offset": { 1: "1.5%", 2: "3.4%", 3: "-0.9%" }[battleAttackFrame] } : {}),
+              ...(battleJumpAttackFrame === 2 ? { "--jump-attack-baseline-offset": "8px" } : {})
+            }}
+            className={`${!isMale ? "female-battle-character" : ""} ${isMale && (battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3) ? "is-jump-attack-frame" : ""} ${isMale && battleJumpAttackFrame === "jump" ? "is-jump-transition-frame" : ""} ${(battleJumpActive && battleJumpFlipped) || (battleAttackFrame && battleAttackFlipped) ? "is-flipped" : ""}`.trim()}
           />
         </div>
         <div
@@ -1419,11 +1689,6 @@ export default function GameWorldScene() {
             <div className="typhoon-boss-art" style={{ transform: `translateX(${bossHorizontalOffset}px)` }}>
               <div key={`boss-hit-${bossHitEffect?.id || "idle"}`} className={`typhoon-boss-content ${bossHitEffect && !bossHitEffect.blocked ? "is-hit" : ""}`}>
               <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className={`typhoon-strike-character ${bossFlipped ? "is-flipped" : ""}`} />
-              {battleCommandsReady && focusModifierHeld && !bossDefeating && <span
-                className="boss-focus-marker"
-                style={{ left: `${focusTarget.x}%`, top: `${focusTarget.y}%` }}
-                aria-label={`${focusTarget.label}\u306b\u6ce8\u76ee\u4e2d`}
-              />}
                 {bossHitEffect && <span
                   key={`boss-sparks-${bossHitEffect.id}`}
                   className="boss-hit-sparks"
@@ -1431,18 +1696,26 @@ export default function GameWorldScene() {
                   aria-hidden="true"
                 >{Array.from({ length: 16 }, (_, index) => <i key={index} style={{ "--spark-angle": `${index * 22.5 + (index % 2) * 7}deg`, "--spark-distance": `${-90 - (index % 4) * 20}px`, "--spark-length": `${7 + (index % 3) * 4}px`, "--spark-delay": `${(index % 3) * 0.015}s` }} />)}</span>}
               </div>
+              {battleCommandsReady && focusModifierHeld && !bossDefeating && <span
+                className={`boss-focus-marker ${focusTarget.id === "eyes" ? "is-eye" : ""}`}
+                style={{ left: `${focusTarget.x}%`, top: `${focusTarget.y}%` }}
+                aria-label={`${focusTarget.label}\u306b\u6ce8\u76ee\u4e2d`}
+              />}
               {eyeBarrierActive && <span
                 className="boss-eye-barrier-grid"
                 style={{ left: `${eyeBarrierTarget.x}%`, top: `${eyeBarrierTarget.y}%`, "--eye-barrier-width": EYE_BARRIER_WIDTHS[bossType] || "30%" }}
                 aria-label="\u76EE\u306E\u30D0\u30EA\u30A2"
-              >{EYE_BARRIER_CELLS.map(([row, column], index) => <i
+              >{EYE_BARRIER_CELLS.map(([row, column], index) => {
+                const revealOrder = eyeBarrierRevealOrder[index] ?? index;
+                return <i
                 key={index}
-                style={{ gridRow: row + 1, gridColumn: column + 1, animationDelay: `${index * 80}ms` }}
-                onAnimationEnd={index === EYE_BARRIER_CELLS.length - 1 ? (event) => {
+                style={{ gridRow: row + 1, gridColumn: column + 1, animationDelay: `${revealOrder * 80}ms` }}
+                onAnimationEnd={revealOrder === EYE_BARRIER_CELLS.length - 1 ? (event) => {
                   if (event.animationName !== "boss-eye-barrier-cell" || eyeBarrierPhaseRef.current !== "revealing") return;
                   setEyeBarrierPhase("active");
                 } : undefined}
-              />)}</span>}
+              />;
+              })}</span>}
               {bossHitEffect && <span
                 key={`boss-damage-${bossHitEffect.id}`}
                 className={`boss-damage-number ${bossHitEffect.critical ? "is-critical" : ""} ${bossHitEffect.blocked ? "is-blocked" : ""}`}

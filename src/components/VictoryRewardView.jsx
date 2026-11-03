@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import "../styles/victory-reward.css";
 
 const makeExpSteps = (player, amount) => {
@@ -34,6 +34,9 @@ export default function VictoryRewardView({ playerBefore, expReward, moneyReward
   const [stepIndex, setStepIndex] = useState(0);
   const [gaugeValue, setGaugeValue] = useState(0);
   const [gaugeFinished, setGaugeFinished] = useState(false);
+  const phaseRef = useRef(phase);
+  const animationIntervalRef = useRef(null);
+  const phaseTimeoutRef = useRef(null);
   const progression = useMemo(() => makeExpSteps(playerBefore, expReward), [playerBefore, expReward]);
   const currentStep = progression.steps[stepIndex];
   const resultTitle = outcome === "retired"
@@ -41,6 +44,42 @@ export default function VictoryRewardView({ playerBefore, expReward, moneyReward
     : outcome === "defeat"
       ? "\u6557\u5317\u5831\u916c"
       : "\u52dd\u5229\u5831\u916c";
+
+  const changePhase = (nextPhase) => {
+    phaseRef.current = nextPhase;
+    setPhase(nextPhase);
+  };
+
+  const advanceReward = () => {
+    window.clearInterval(animationIntervalRef.current);
+    window.clearTimeout(phaseTimeoutRef.current);
+    animationIntervalRef.current = null;
+    phaseTimeoutRef.current = null;
+
+    if (phaseRef.current === "exp") {
+      setRolledExp(expReward);
+      changePhase("gauge");
+      return;
+    }
+    if (phaseRef.current === "gauge") {
+      if (stepIndex + 1 < progression.steps.length) {
+        setGaugeFinished(false);
+        setGaugeValue(progression.steps[stepIndex + 1].from);
+        setStepIndex((index) => index + 1);
+      } else {
+        setGaugeValue(currentStep?.to ?? 0);
+        setGaugeFinished(true);
+        changePhase("money");
+      }
+      return;
+    }
+    if (phaseRef.current === "money") {
+      setRolledMoney(moneyReward);
+      changePhase("complete");
+      return;
+    }
+    onComplete?.();
+  };
 
   useEffect(() => {
     if (phase !== "exp" && phase !== "money") return undefined;
@@ -54,10 +93,18 @@ export default function VictoryRewardView({ playerBefore, expReward, moneyReward
 
       if (progress >= 1) {
         window.clearInterval(interval);
-        window.setTimeout(() => setPhase(phase === "exp" ? "gauge" : "complete"), 350);
+        animationIntervalRef.current = null;
+        phaseTimeoutRef.current = window.setTimeout(() => {
+          phaseTimeoutRef.current = null;
+          changePhase(phase === "exp" ? "gauge" : "complete");
+        }, 350);
       }
     }, 30);
-    return () => window.clearInterval(interval);
+    animationIntervalRef.current = interval;
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(phaseTimeoutRef.current);
+    };
   }, [phase, expReward, moneyReward]);
 
   useEffect(() => {
@@ -71,22 +118,31 @@ export default function VictoryRewardView({ playerBefore, expReward, moneyReward
 
       if (progress >= 1) {
         window.clearInterval(interval);
-        window.setTimeout(() => {
+        animationIntervalRef.current = null;
+        phaseTimeoutRef.current = window.setTimeout(() => {
+          phaseTimeoutRef.current = null;
           if (stepIndex + 1 < progression.steps.length) {
             setGaugeFinished(false);
             setStepIndex((index) => index + 1);
           } else {
             setGaugeFinished(true);
-            window.setTimeout(() => setPhase("money"), 900);
+            phaseTimeoutRef.current = window.setTimeout(() => {
+              phaseTimeoutRef.current = null;
+              changePhase("money");
+            }, 900);
           }
         }, 300);
       }
     }, 30);
-    return () => window.clearInterval(interval);
+    animationIntervalRef.current = interval;
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(phaseTimeoutRef.current);
+    };
   }, [phase, currentStep, stepIndex, progression.steps.length]);
 
   return (
-    <main className="victory-reward-screen" role="dialog" aria-modal="true" aria-label="勝利報酬">
+    <main className="victory-reward-screen" role="dialog" aria-modal="true" onClick={advanceReward} aria-label="勝利報酬">
       <div className="victory-reward-content">
         <h1>{resultTitle}</h1>
 
@@ -111,7 +167,7 @@ export default function VictoryRewardView({ playerBefore, expReward, moneyReward
           </section>
         </div>
 
-        {phase === "complete" && <button type="button" className="btn-ghost victory-reward-button" onClick={onComplete}>{"\u30b2\u30fc\u30e0\u306b\u623b\u308b"}</button>}
+        {phase === "complete" && <button type="button" className="btn-ghost victory-reward-button" onClick={(event) => { event.stopPropagation(); onComplete?.(); }}>{"\u30b2\u30fc\u30e0\u306b\u623b\u308b"}</button>}
       </div>
     </main>
   );
