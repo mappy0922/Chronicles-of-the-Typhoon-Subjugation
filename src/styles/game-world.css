@@ -50,9 +50,13 @@
 .strike-player-position.is-jumping img.female-battle-character { height:95%; }
 .strike-player-position.is-jumping img { animation:battle-player-jump-lunge .24s ease-out both; }
 .strike-player-position.is-attacking img { height:150%; max-width:none; animation:none; transform:translateY(calc(var(--attack-baseline-offset,0%) + 20px)) scaleX(1); }
-.strike-player-position.is-jumping.is-attacking img.is-jump-attack-frame { height:110%; animation:none; transform:translateY(calc(var(--jump-attack-baseline-offset,0px) + 20px)) scaleX(1); }
+.strike-player-position.is-attacking img.is-female-foot-attack-frame { height:135%; }
+.strike-player-position.is-jumping.is-attacking img.is-jump-attack-frame { height:120%; animation:none; transform:translateY(calc(var(--jump-attack-baseline-offset,0px) + 20px)) scaleX(1); }
+.strike-player-position.is-jumping.is-attacking img.is-jump-attack-frame.female-battle-character { height:120%; transform:translateY(calc(var(--jump-attack-baseline-offset,0px) + 4px)) scaleX(1); }
+.strike-player-position.is-jumping.is-attacking img.is-jump-attack-frame.female-battle-character.is-flipped { transform:translateY(calc(var(--jump-attack-baseline-offset,0px) + 4px)) scaleX(-1); }
 .strike-player-position.is-jumping.is-attacking img.is-jump-attack-frame.is-flipped { transform:translateY(calc(var(--jump-attack-baseline-offset,0px) + 20px)) scaleX(-1); }
 .strike-player-position.is-jumping.is-attacking img.is-jump-transition-frame { height:80%; animation:none; transform:translateY(calc(20px - 31%)) scaleX(1); }
+.strike-player-position.is-jumping.is-attacking img.is-jump-transition-frame.female-battle-character { height:95%; }
 .strike-player-position.is-jumping.is-attacking img.is-jump-transition-frame.is-flipped { transform:translateY(calc(20px - 31%)) scaleX(-1); }
 .strike-player-position.is-attacking img.is-flipped { transform:translateY(calc(var(--attack-baseline-offset,0%) + 20px)) scaleX(-1); }
 .strike-player-position.is-jumping img.is-flipped { --battle-jump-facing:-1; }

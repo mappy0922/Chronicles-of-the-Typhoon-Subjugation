@@ -361,6 +361,9 @@ export default function GameWorldScene() {
   const battleJumpAttackHasRepeatedRef = useRef(false);
   const battleJumpAttackFrameIndexRef = useRef(0);
   const battleJumpAttackReadyRef = useRef(false);
+  const battleJumpAttackConnectedRef = useRef(false);
+  const battleJumpAttackTargetRef = useRef(null);
+  const battleJumpAttackBossFlippedRef = useRef(false);
   const battleJumpAttackHitRef = useRef(null);
   const battleAttackMashRemainingRef = useRef(0);
   const battleAttackHasRepeatedRef = useRef(false);
@@ -461,9 +464,22 @@ export default function GameWorldScene() {
       ? facing < 0 ? playerBounds.right : playerBounds.left
       : playerX - facing * 60;
     const bossBackSideInset = bossBounds.width * 0.08;
+    const handJumpMiss = battleJumpActiveRef.current
+      && ["hand-left", "hand-right", "hand"].includes(battleJumpAttackTargetRef.current)
+      && bossFlipped !== battleJumpAttackBossFlippedRef.current;
     if (!bossFlipped && playerBackX > bossBounds.right - bossBackSideInset) {
+      if (handJumpMiss) {
+        battleJumpAttackConnectedRef.current = false;
+        window.clearTimeout(bossFollowTimeoutRef.current);
+        setBattleFollowingBoss(false);
+      }
       setBossFlipped(true);
     } else if (bossFlipped && playerBackX < bossBounds.left + bossBackSideInset) {
+      if (handJumpMiss) {
+        battleJumpAttackConnectedRef.current = false;
+        window.clearTimeout(bossFollowTimeoutRef.current);
+        setBattleFollowingBoss(false);
+      }
       setBossFlipped(false);
     }
   }, [battleActive, battlePlayerLeft, bossFlipped, bossHorizontalOffset, facing, typhoonAppearance]);
@@ -506,7 +522,7 @@ export default function GameWorldScene() {
         bossMovementInProgressRef.current = false;
         eyeBarrierRevealCheckRef.current?.();
       }, 700);
-      if (battleJumpActiveRef.current && battleAttackPhaseRef.current === "attack" && battleJumpAttackReadyRef.current) {
+      if (battleJumpActiveRef.current && battleAttackPhaseRef.current === "attack" && battleJumpAttackConnectedRef.current) {
         const nextPlayerLeft = Math.max(0, Math.min(100, battlePlayerLeftRef.current + (offsetDelta / encounterBounds.width) * 100));
         battlePlayerLeftRef.current = nextPlayerLeft;
         setBattlePlayerLeft(nextPlayerLeft);
@@ -594,6 +610,8 @@ export default function GameWorldScene() {
     battleAttackPhaseRef.current = "landing";
     battleJumpUsesMashAttackRef.current = false;
     battleJumpAttackReadyRef.current = false;
+    battleJumpAttackConnectedRef.current = false;
+    battleJumpAttackTargetRef.current = null;
     battleJumpAttackHitRef.current = null;
     battleJumpAttackHasRepeatedRef.current = false;
     battleJumpAttackMashRemainingRef.current = 0;
@@ -621,6 +639,9 @@ export default function GameWorldScene() {
   const startGroundedFootAttack = (flipped) => {
     setBattleAttackFlipped(flipped);
     setBattleFollowingBoss(false);
+    if (movementInterval.current) window.clearInterval(movementInterval.current);
+    movementInterval.current = null;
+    setMoving(false);
     if (battleAttackPhaseRef.current === "attack" && battleFootAttackTimerActiveRef.current) {
       battleAttackHasRepeatedRef.current = true;
       battleAttackMashRemainingRef.current = BATTLE_ATTACK_MASH_WINDOW;
@@ -687,8 +708,13 @@ export default function GameWorldScene() {
       "/man_attack1.png",
       "/man_attack2.png",
       "/man_attack3.png",
+      "/woman_attack1-cutout.png",
+      "/woman_attack2-cutout.png",
+      "/woman_attack3-cutout.png",
       "/man_attack_jump2-cutout.png",
       "/man_attack_jump3-cutout.png",
+      "/woman_attack_jump2-cutout.png",
+      "/woman_attack_jump3-cutout.png",
       "/man_battle_jump-cutout.png",
       ...FEMALE_BATTLE_RIGHT_WALK_FRAMES,
       ...FEMALE_BATTLE_LEFT_WALK_FRAMES,
@@ -905,7 +931,10 @@ export default function GameWorldScene() {
     battleGroundedRef.current = false;
     battleJumpActiveRef.current = true;
     battleJumpUsesMashAttackRef.current = false;
-    battleJumpAttackReadyRef.current = isMale;
+    battleJumpAttackReadyRef.current = true;
+    battleJumpAttackConnectedRef.current = false;
+    battleJumpAttackTargetRef.current = attackTarget.id;
+    battleJumpAttackBossFlippedRef.current = bossFlippedRef.current;
     battleJumpAttackHitRef.current = onImpact;
     battleJumpAttackHasRepeatedRef.current = false;
     battleJumpAttackMashRemainingRef.current = 0;
@@ -928,29 +957,6 @@ export default function GameWorldScene() {
     setBattlePlayerLeft(jumpLandingLeft);
     const impactTimer = scheduleWhileUnpaused(() => {
       transitionTimers.current = transitionTimers.current.filter((timer) => timer !== impactTimer);
-      if (!isMale) {
-        setBattleJumpTargetTop(groundTop);
-        battleAttackPhaseRef.current = "landing";
-        onImpact?.();
-        if (battleAttackPhaseRef.current !== "landing") return;
-        const landingTimer = scheduleWhileUnpaused(() => {
-          transitionTimers.current = transitionTimers.current.filter((timer) => timer !== landingTimer);
-          battleGroundedRef.current = true;
-          battleJumpActiveRef.current = false;
-          battleAttackPhaseRef.current = "none";
-          battleJumpUsesMashAttackRef.current = false;
-          battleJumpAttackReadyRef.current = false;
-          battleJumpAttackHitRef.current = null;
-          setBattleJumpActive(false);
-          setBattleJumpFlipped(false);
-          window.clearTimeout(bossFollowTimeoutRef.current);
-          setBattleFollowingBoss(false);
-          setBattleJumpTargetTop(null);
-          eyeBarrierRevealCheckRef.current?.();
-        }, BATTLE_JUMP_LANDING_DURATION);
-        transitionTimers.current.push(landingTimer);
-        return;
-      }
       battleAttackPhaseRef.current = "attack";
       if (battleJumpAttackHasRepeatedRef.current) {
         battleJumpAttackMashRemainingRef.current = BATTLE_ATTACK_MASH_WINDOW;
@@ -1078,10 +1084,8 @@ export default function GameWorldScene() {
         if (command === "fight") {
           window.clearInterval(bossHitTimeoutRef.current);
           setBossHitEffect(null);
-          if (isMale) {
-            setBattlePlayerHasMoved(true);
-            startGroundedFootAttack(facing > 0);
-          }
+          setBattlePlayerHasMoved(true);
+          startGroundedFootAttack(facing > 0);
         }
         return false;
       }
@@ -1095,12 +1099,18 @@ export default function GameWorldScene() {
       const focusMultiplier = attackTarget.id === "eyes" ? 2 : 1;
       const isHandTarget = attackTarget.id === "hand-left" || attackTarget.id === "hand-right" || attackTarget.id === "hand";
       const applyAttackHit = () => {
-        if (isHandTarget && bossFlippedRef.current !== bossFlippedAtAttackStart) return;
+        if (isHandTarget && bossFlippedRef.current !== bossFlippedAtAttackStart) {
+          battleJumpAttackConnectedRef.current = false;
+          window.clearTimeout(bossFollowTimeoutRef.current);
+          setBattleFollowingBoss(false);
+          return;
+        }
+        battleJumpAttackConnectedRef.current = true;
         const critical = Math.random() < 0.03;
         const finalDamage = baseDamage * focusMultiplier * (critical ? 3 : 1);
         dealBossDamage(finalDamage, critical, attackTarget);
       };
-      const mashAttack = command === "fight" && attackTarget.id === "foot" && isMale;
+      const mashAttack = command === "fight" && attackTarget.id === "foot";
       if (mashAttack) startGroundedFootAttack(attackFacing > 0);
       const startedJump = startGroundedJumpToAttack(attackTarget, applyAttackHit);
       if (!startedJump) applyAttackHit();
@@ -1189,6 +1199,11 @@ export default function GameWorldScene() {
       const command = ["fight", "guard", "heal", "special"].find((action) => matchesKeyBinding(bindings, action, event));
       const moveLeft = matchesKeyBinding(bindings, "moveLeft", event);
       const moveRight = matchesKeyBinding(bindings, "moveRight", event);
+      if (battleActiveRef.current && battleFootAttackTimerActiveRef.current && (moveLeft || moveRight)) {
+        event.preventDefault();
+        stopMovement();
+        return;
+      }
       if ((moveLeft || moveRight) && battleActiveRef.current && battleJumpActiveRef.current
         && ["jump", "attack", "landing"].includes(battleAttackPhaseRef.current)) {
         event.preventDefault();
@@ -1265,6 +1280,11 @@ export default function GameWorldScene() {
       }
       const moveLeft = getBindingKeys(bindings, "moveLeft").includes(mouseBinding);
       const moveRight = getBindingKeys(bindings, "moveRight").includes(mouseBinding);
+      if (battleActiveRef.current && battleFootAttackTimerActiveRef.current && (moveLeft || moveRight)) {
+        event.preventDefault();
+        stopMovement();
+        return;
+      }
       if (movementLockedRef.current) {
         if (!battleActiveRef.current) return;
         const command = ["fight", "guard", "heal", "special"].find((action) => getBindingKeys(bindings, action).includes(mouseBinding));
@@ -1635,12 +1655,12 @@ export default function GameWorldScene() {
         <div className={`strike-player-position ${battleJumpActive ? "is-jumping" : ""} ${battleAttackFrame || battleJumpAttackFrame ? "is-attacking" : ""} ${battleFollowingBoss ? "is-following-boss" : ""} ${eyeBarrierLocked ? "is-barrier-locked" : ""}`} style={{ left: `${battlePlayerLeft}%`, top: battleJumpActive && battleJumpTargetTop !== null ? `${battleJumpTargetTop}px` : undefined }}>
           <span className="world-player-shadow battle-player-shadow" aria-hidden="true" />
           <img
-            src={isMale && battleJumpAttackFrame === "jump"
-              ? "/man_battle_jump-cutout.png"
-              : isMale && (battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3)
-                ? `/man_attack_jump${battleJumpAttackFrame}-cutout.png`
-              : isMale && battleAttackFrame
-              ? `/man_attack${battleAttackFrame}.png`
+            src={battleJumpAttackFrame === "jump"
+              ? isMale ? "/man_battle_jump-cutout.png" : "/woman_battle_jump-cutout.png"
+              : battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3
+                ? `/${isMale ? "man" : "woman"}_attack_jump${battleJumpAttackFrame}-cutout.png`
+              : battleAttackFrame
+              ? `/${isMale ? "man" : "woman"}_attack${battleAttackFrame}${isMale ? ".png" : "-cutout.png"}`
               : battleJumpActive
                 ? isMale ? "/man_battle_jump-cutout.png" : "/woman_battle_jump-cutout.png"
               : isMale
@@ -1659,7 +1679,7 @@ export default function GameWorldScene() {
               ...(battleAttackFrame ? { "--attack-baseline-offset": { 1: "1.5%", 2: "3.4%", 3: "-0.9%" }[battleAttackFrame] } : {}),
               ...(battleJumpAttackFrame === 2 ? { "--jump-attack-baseline-offset": "8px" } : {})
             }}
-            className={`${!isMale ? "female-battle-character" : ""} ${isMale && (battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3) ? "is-jump-attack-frame" : ""} ${isMale && battleJumpAttackFrame === "jump" ? "is-jump-transition-frame" : ""} ${(battleJumpActive && battleJumpFlipped) || (battleAttackFrame && battleAttackFlipped) ? "is-flipped" : ""}`.trim()}
+            className={`${!isMale ? "female-battle-character" : ""} ${!isMale && battleAttackFrame ? "is-female-foot-attack-frame" : ""} ${battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3 ? "is-jump-attack-frame" : ""} ${battleJumpAttackFrame === "jump" ? "is-jump-transition-frame" : ""} ${(battleJumpActive && battleJumpFlipped) || (battleAttackFrame && battleAttackFlipped) ? "is-flipped" : ""}`.trim()}
           />
         </div>
         <div
