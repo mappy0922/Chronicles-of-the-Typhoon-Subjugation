@@ -364,6 +364,7 @@ export default function GameWorldScene() {
   const battleJumpAttackConnectedRef = useRef(false);
   const battleJumpAttackTargetRef = useRef(null);
   const battleJumpAttackBossFlippedRef = useRef(false);
+  const battleJumpAttackFocusedRef = useRef(false);
   const battleJumpAttackHitRef = useRef(null);
   const battleAttackMashRemainingRef = useRef(0);
   const battleAttackHasRepeatedRef = useRef(false);
@@ -465,6 +466,7 @@ export default function GameWorldScene() {
       : playerX - facing * 60;
     const bossBackSideInset = bossBounds.width * 0.08;
     const handJumpMiss = battleJumpActiveRef.current
+      && battleJumpAttackFocusedRef.current
       && ["hand-left", "hand-right", "hand"].includes(battleJumpAttackTargetRef.current)
       && bossFlipped !== battleJumpAttackBossFlippedRef.current;
     if (!bossFlipped && playerBackX > bossBounds.right - bossBackSideInset) {
@@ -612,6 +614,7 @@ export default function GameWorldScene() {
     battleJumpAttackReadyRef.current = false;
     battleJumpAttackConnectedRef.current = false;
     battleJumpAttackTargetRef.current = null;
+    battleJumpAttackFocusedRef.current = false;
     battleJumpAttackHitRef.current = null;
     battleJumpAttackHasRepeatedRef.current = false;
     battleJumpAttackMashRemainingRef.current = 0;
@@ -935,6 +938,7 @@ export default function GameWorldScene() {
     battleJumpAttackConnectedRef.current = false;
     battleJumpAttackTargetRef.current = attackTarget.id;
     battleJumpAttackBossFlippedRef.current = bossFlippedRef.current;
+    battleJumpAttackFocusedRef.current = focusModeRef.current;
     battleJumpAttackHitRef.current = onImpact;
     battleJumpAttackHasRepeatedRef.current = false;
     battleJumpAttackMashRemainingRef.current = 0;
@@ -1096,19 +1100,43 @@ export default function GameWorldScene() {
         setFacing(attackFacing);
       }
 
-      const focusMultiplier = attackTarget.id === "eyes" ? 2 : 1;
       const isHandTarget = attackTarget.id === "hand-left" || attackTarget.id === "hand-right" || attackTarget.id === "hand";
+      const focusedAttack = focusModeRef.current;
       const applyAttackHit = () => {
         if (isHandTarget && bossFlippedRef.current !== bossFlippedAtAttackStart) {
-          battleJumpAttackConnectedRef.current = false;
-          window.clearTimeout(bossFollowTimeoutRef.current);
-          setBattleFollowingBoss(false);
-          return;
+          if (focusedAttack) {
+            battleJumpAttackConnectedRef.current = false;
+            window.clearTimeout(bossFollowTimeoutRef.current);
+            setBattleFollowingBoss(false);
+            return;
+          }
         }
         battleJumpAttackConnectedRef.current = true;
         const critical = Math.random() < 0.03;
-        const finalDamage = baseDamage * focusMultiplier * (critical ? 3 : 1);
-        dealBossDamage(finalDamage, critical, attackTarget);
+        let hitTarget = attackTarget;
+        if (isHandTarget && bossFlippedRef.current !== bossFlippedAtAttackStart) {
+          const currentBattleBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
+          const currentBossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
+          const currentPlayerBounds = document.querySelector(".strike-player-position img")?.getBoundingClientRect();
+          if (currentBattleBounds && currentBossBounds && currentPlayerBounds) {
+            const currentTargets = [
+              ...FOCUS_TARGETS.filter((target) => target.id !== "hand").map((target) => orientBossTarget(getAdjustedFocusTarget(target.id, bossType, handSide), bossFlippedRef.current)),
+              orientBossTarget(getAdjustedFocusTarget("hand-left", bossType, handSide), bossFlippedRef.current),
+              orientBossTarget(getAdjustedFocusTarget("hand-right", bossType, handSide), bossFlippedRef.current)
+            ];
+            const playerX = currentPlayerBounds.left + currentPlayerBounds.width / 2;
+            const playerY = currentPlayerBounds.top + currentPlayerBounds.height / 2;
+            hitTarget = currentTargets.reduce((nearest, candidate) => {
+              const candidateX = currentBossBounds.left + (candidate.x / 100) * currentBossBounds.width;
+              const candidateY = currentBossBounds.top + (candidate.y / 100) * currentBossBounds.height;
+              const nearestX = currentBossBounds.left + (nearest.x / 100) * currentBossBounds.width;
+              const nearestY = currentBossBounds.top + (nearest.y / 100) * currentBossBounds.height;
+              return Math.hypot(candidateX - playerX, candidateY - playerY) < Math.hypot(nearestX - playerX, nearestY - playerY) ? candidate : nearest;
+            });
+          }
+        }
+        const finalDamage = baseDamage * (hitTarget.id === "eyes" ? 2 : 1) * (critical ? 3 : 1);
+        dealBossDamage(finalDamage, critical, hitTarget);
       };
       const mashAttack = command === "fight" && attackTarget.id === "foot";
       if (mashAttack) startGroundedFootAttack(attackFacing > 0);
@@ -1679,7 +1707,7 @@ export default function GameWorldScene() {
               ...(battleAttackFrame ? { "--attack-baseline-offset": { 1: "1.5%", 2: "3.4%", 3: "-0.9%" }[battleAttackFrame] } : {}),
               ...(battleJumpAttackFrame === 2 ? { "--jump-attack-baseline-offset": "8px" } : {})
             }}
-            className={`${!isMale ? "female-battle-character" : ""} ${!isMale && battleAttackFrame ? "is-female-foot-attack-frame" : ""} ${battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3 ? "is-jump-attack-frame" : ""} ${battleJumpAttackFrame === "jump" ? "is-jump-transition-frame" : ""} ${(battleJumpActive && battleJumpFlipped) || (battleAttackFrame && battleAttackFlipped) ? "is-flipped" : ""}`.trim()}
+            className={`${!isMale ? "female-battle-character" : ""} ${!isMale && battleAttackFrame ? "is-female-foot-attack-frame" : ""} ${isMale && battleJumpActive && battleJumpAttackFrame !== 2 && battleJumpAttackFrame !== 3 ? "is-male-jump-frame" : ""} ${battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3 ? "is-jump-attack-frame" : ""} ${battleJumpAttackFrame === "jump" ? "is-jump-transition-frame" : ""} ${(battleJumpActive && battleJumpFlipped) || (battleAttackFrame && battleAttackFlipped) ? "is-flipped" : ""}`.trim()}
           />
         </div>
         <div
