@@ -70,14 +70,19 @@ const getAdjustedFocusTarget = (targetId, typhoonType, handSide = "right") => {
 };
 const orientBossTarget = (target, flipped) => flipped ? { ...target, x: 100 - target.x } : target;
 
-function EdgeShadedImage({ src, alt = "", className = "", wrapperClassName = "", style }) {
+const EdgeShadedImage = React.memo(function EdgeShadedImage({ src, alt = "", className = "", wrapperClassName = "", style }) {
   return (
     <span className={`edge-shade-wrap ${wrapperClassName}`.trim()} style={style}>
       <img src={src} alt={alt} className={className} />
       <img src={src} alt="" aria-hidden="true" className="edge-shade-overlay" />
     </span>
   );
-}
+}, (previous, next) => previous.src === next.src
+  && previous.alt === next.alt
+  && previous.className === next.className
+  && previous.wrapperClassName === next.wrapperClassName
+  && previous.style?.left === next.style?.left
+  && previous.style?.width === next.style?.width);
 
 const HOUSE_LAYOUTS = [
   {
@@ -178,22 +183,21 @@ const grassRandom = (seed) => {
 const makeGrass = (count) => Array.from({ length: count }, (_, index) => {
   const depth = grassRandom(index + 1);
   return {
-    left: grassRandom(index + 1201) * 100,
+    left: grassRandom(index + 1201),
     // Grass higher on the ground plane is farther away, so make it shorter.
     depth,
-    height: `${4 + (1 - depth) * (12 + grassRandom(index + 2401) * 11.8)}%`,
-    lean: `${grassRandom(index + 3601) * 24 - 12}deg`,
-    delay: `${-grassRandom(index + 4801) * 2}s`
+    height: (4 + (1 - depth) * (12 + grassRandom(index + 2401) * 11.8)) / 100,
+    lean: (grassRandom(index + 3601) * 24 - 12) * Math.PI / 180,
+    delay: -grassRandom(index + 4801) * 2,
+    colorIndex: Math.min(4, Math.floor((1 - depth) * 5))
   };
 });
 
-function Grass({ blades, playerPosition, mapIndex, moving, paused, windStrength }) {
+const Grass = React.memo(function Grass({ blades, playerPosition, mapIndex, moving, paused, windStrength }) {
   const canvasRef = useRef(null);
-  const [hiddenIndexes, setHiddenIndexes] = useState(() => new Set());
   const windStrengthRef = useRef(windStrength);
-  useEffect(() => {
-    windStrengthRef.current = Math.max(0, Math.min(1, Number(windStrength) || 0));
-  }, [windStrength]);
+  const hiddenIndexesRef = useRef(new Set());
+  windStrengthRef.current = Math.max(0, Math.min(1, Number(windStrength) || 0));
 
   useLayoutEffect(() => {
     const updateOverlaps = () => {
@@ -213,9 +217,9 @@ function Grass({ blades, playerPosition, mapIndex, moving, paused, windStrength 
       const hidden = new Set();
 
       blades.forEach((blade, index) => {
-        const x = grassBounds.left + (blade.left / 100) * grassBounds.width;
+        const x = grassBounds.left + blade.left * grassBounds.width;
         const baseY = grassBounds.bottom - blade.depth * 0.96 * grassBounds.height;
-        const bladeHeight = Math.max(4, (Number.parseFloat(blade.height) / 100) * grassBounds.height);
+        const bladeHeight = Math.max(4, blade.height * grassBounds.height);
         const topY = baseY - bladeHeight;
         const halfWidth = Math.max(2, bladeHeight * 0.2);
         const overlapsHouse = houseBounds.some((house) =>
@@ -229,10 +233,7 @@ function Grass({ blades, playerPosition, mapIndex, moving, paused, windStrength 
         if (overlapsHouse || overlapsCharacter) hidden.add(index);
       });
 
-      setHiddenIndexes((previous) => {
-        if (previous.size === hidden.size && [...previous].every((index) => hidden.has(index))) return previous;
-        return hidden;
-      });
+      hiddenIndexesRef.current = hidden;
     };
 
     updateOverlaps();
@@ -248,53 +249,71 @@ function Grass({ blades, playerPosition, mapIndex, moving, paused, windStrength 
 
     let frameId;
     let lastDraw = 0;
+    let boundsWidth = 0;
+    let boundsHeight = 0;
+    let pixelRatio = 1;
+    let bladeWidth = 2;
     const palette = ["#397f3b", "#478f40", "#579f45", "#68af4a", "#79bd50"];
+    const bladesByColor = palette.map(() => []);
+    blades.forEach((blade, index) => bladesByColor[blade.colorIndex].push(index));
+    const resize = () => {
+      const bounds = canvas.getBoundingClientRect();
+      boundsWidth = bounds.width;
+      boundsHeight = bounds.height;
+      pixelRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+      const width = Math.max(1, Math.round(boundsWidth * pixelRatio));
+      const height = Math.max(1, Math.round(boundsHeight * pixelRatio));
+      if (canvas.width !== width || canvas.height !== height) {
+        canvas.width = width;
+        canvas.height = height;
+      }
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      bladeWidth = Math.max(2, Math.min(4, window.innerWidth * 0.0028));
+    };
+    resize();
+    window.addEventListener("resize", resize);
     const draw = (timestamp) => {
       if (timestamp - lastDraw >= 1000 / 30) {
         lastDraw = timestamp;
-        const bounds = canvas.getBoundingClientRect();
-        const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-        const width = Math.max(1, Math.round(bounds.width * pixelRatio));
-        const height = Math.max(1, Math.round(bounds.height * pixelRatio));
-        if (canvas.width !== width || canvas.height !== height) {
-          canvas.width = width;
-          canvas.height = height;
-        }
-        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-        context.clearRect(0, 0, bounds.width, bounds.height);
-
-        const bladeWidth = Math.max(2, Math.min(4, window.innerWidth * 0.0028));
-        blades.forEach((blade, index) => {
-          if (hiddenIndexes.has(index)) return;
-          const x = (blade.left / 100) * bounds.width;
-          const baseY = bounds.height * (1 - blade.depth * 0.96);
-          const bladeHeight = Math.max(4, (Number.parseFloat(blade.height) / 100) * bounds.height);
-          const force = windStrengthRef.current;
-          const phase = (timestamp / (850 - force * 360) + Number.parseFloat(blade.delay)) * Math.PI;
-          const gust = Math.sin(timestamp / 1500 + Number.parseFloat(blade.delay) * 2) * force * 4;
-          const sway = Math.sin(phase) * (3.5 + force * 8) + 0.5 + force * 20 + gust;
-          const angle = ((Number.parseFloat(blade.lean) + sway) * Math.PI) / 180;
-          const tipX = x + Math.sin(angle) * bladeHeight;
-          const tipY = baseY - Math.cos(angle) * bladeHeight;
-
+        context.clearRect(0, 0, boundsWidth, boundsHeight);
+        const force = windStrengthRef.current;
+        const phaseRate = 1 / (850 - force * 360);
+        for (let colorIndex = 0; colorIndex < bladesByColor.length; colorIndex += 1) {
           context.beginPath();
-          context.moveTo(x - bladeWidth / 2, baseY);
-          context.quadraticCurveTo(x - bladeWidth * 0.2, baseY - bladeHeight * 0.55, tipX, tipY);
-          context.quadraticCurveTo(x + bladeWidth * 0.5, baseY - bladeHeight * 0.48, x + bladeWidth / 2, baseY);
-          context.closePath();
-          context.fillStyle = palette[Math.min(4, Math.floor((1 - blade.depth) * 5))];
+          for (const index of bladesByColor[colorIndex]) {
+            if (hiddenIndexesRef.current.has(index)) continue;
+            const blade = blades[index];
+            const x = blade.left * boundsWidth;
+            const baseY = boundsHeight * (1 - blade.depth * 0.96);
+            const bladeHeight = Math.max(4, blade.height * boundsHeight);
+            const phase = (timestamp * phaseRate + blade.delay) * Math.PI;
+            const gust = Math.sin(timestamp / 1500 + blade.delay * 2) * force * 4;
+            const sway = Math.sin(phase) * (3.5 + force * 8) + 0.5 + force * 20 + gust;
+            const angle = blade.lean + (sway * Math.PI) / 180;
+            const tipX = x + Math.sin(angle) * bladeHeight;
+            const tipY = baseY - Math.cos(angle) * bladeHeight;
+
+            context.moveTo(x - bladeWidth / 2, baseY);
+            context.quadraticCurveTo(x - bladeWidth * 0.2, baseY - bladeHeight * 0.55, tipX, tipY);
+            context.quadraticCurveTo(x + bladeWidth * 0.5, baseY - bladeHeight * 0.48, x + bladeWidth / 2, baseY);
+            context.closePath();
+          }
+          context.fillStyle = palette[colorIndex];
           context.fill();
-        });
+        }
       }
       frameId = window.requestAnimationFrame(draw);
     };
 
     frameId = window.requestAnimationFrame(draw);
-    return () => window.cancelAnimationFrame(frameId);
-  }, [blades, hiddenIndexes, paused]);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+      window.removeEventListener("resize", resize);
+    };
+  }, [blades, paused]);
 
   return <canvas ref={canvasRef} className="world-grass-foreground" aria-hidden="true" />;
-}
+});
 
 export default function GameWorldScene() {
   const { player, setPlayer, gainExp, addMoney, setIsPaused, computedStats, proximityInfo, weatherInfo, activeTyphoon, addToEncyclopedia, setLastResult, returnWeatherToSunnyAfterCombat, isPaused, setIsLoading, isBattleActive: battleActive, setIsBattleActive: setBattleActive } = useGame();
@@ -814,7 +833,6 @@ export default function GameWorldScene() {
       const charge = Math.min(100, ((timestamp - startedAt) / 2000) * 100);
       if (timestamp - lastUpdate >= 33 || charge === 100) {
         setBossGaugeCharge(charge);
-        if (bossGaugeDamage === 0) setBossGaugeTrail(charge);
         lastUpdate = timestamp;
       }
       if (charge < 100) frameId = window.requestAnimationFrame(chargeGauge);
@@ -832,6 +850,7 @@ export default function GameWorldScene() {
     if (isPaused || bossGaugeTrail <= bossGaugeProgress) return undefined;
     let frameId;
     let previousTime;
+    let lastUpdate = 0;
     let currentTrail = bossGaugeTrailRef.current;
     const easeDamageTrail = (timestamp) => {
       if (previousTime === undefined) previousTime = timestamp;
@@ -840,7 +859,10 @@ export default function GameWorldScene() {
       const nextTrail = Math.max(bossGaugeProgress, currentTrail - elapsed * 0.075);
       currentTrail = nextTrail;
       bossGaugeTrailRef.current = nextTrail;
-      setBossGaugeTrail(nextTrail);
+      if (timestamp - lastUpdate >= 1000 / 30 || nextTrail === bossGaugeProgress) {
+        setBossGaugeTrail(nextTrail);
+        lastUpdate = timestamp;
+      }
       if (nextTrail > bossGaugeProgress) frameId = window.requestAnimationFrame(easeDamageTrail);
     };
     frameId = window.requestAnimationFrame(easeDamageTrail);
@@ -1707,7 +1729,7 @@ export default function GameWorldScene() {
             paused={isPaused}
             windStrength={Math.max(weatherInfo.rainIntensity || 0, weatherInfo.stormIntensity || 0)}
           />
-        <StormCanvas strengthBased flashAboveGround />
+        <StormCanvas strengthBased flashAboveGround weatherInfo={weatherInfo} proximityInfo={proximityInfo} isPaused={isPaused} />
       </div>
       {isMapNameVisible && <div key={mapLabelKey} className="map-name-indicator" aria-live="polite">{MAP_NAMES[mapIndex]}</div>}
       {(mapTransition === "loading" || mapTransition === "fade-in") && <div className={`map-loading-indicator ${mapTransition === "fade-in" ? "is-fading" : ""}`}>{"\u30ED\u30FC\u30C9\u4E2D..."}</div>}

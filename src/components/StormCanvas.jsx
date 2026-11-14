@@ -1,13 +1,11 @@
 import React, { useRef, useEffect } from "react";
-import { useGame } from "../game/context/GameContext";
 
-export default function StormCanvas({ isBattle = false, strengthBased = false, flashAboveGround = false }) {
+function StormCanvas({ isBattle = false, strengthBased = false, flashAboveGround = false, weatherInfo = {}, proximityInfo = {}, isPaused = false }) {
   const canvasRef = useRef(null);
-  const { proximityInfo, weatherInfo, isPaused } = useGame();
-  const weatherRef = useRef(weatherInfo);
-  const proximityRef = useRef(proximityInfo);
-  weatherRef.current = weatherInfo;
-  proximityRef.current = proximityInfo;
+  const weatherRef = useRef(weatherInfo || {});
+  const proximityRef = useRef(proximityInfo || {});
+  weatherRef.current = weatherInfo || {};
+  proximityRef.current = proximityInfo || {};
 
   useEffect(() => {
     if (isPaused) return undefined;
@@ -15,6 +13,7 @@ export default function StormCanvas({ isBattle = false, strengthBased = false, f
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     let animationId;
+    let dryTimerId;
 
     const resize = () => {
       canvas.width = canvas.parentElement?.clientWidth || window.innerWidth;
@@ -38,15 +37,23 @@ export default function StormCanvas({ isBattle = false, strengthBased = false, f
     }));
 
     let lightningTimer = 0;
+    let hadRainOrLightning = false;
 
     const render = () => {
       const currentWeather = weatherRef.current;
       const currentProximity = proximityRef.current;
-      const localStorm = currentWeather.stormIntensity || 0;
-      const strike = isBattle || currentProximity.alertPhase === "strike";
+      const localStorm = currentWeather?.stormIntensity || 0;
+      const strike = isBattle || currentProximity?.alertPhase === "strike";
       rainCount = strike ? 180 : Math.round(180 * (currentWeather.rainIntensity || 0));
       windSpeed = strike ? 22 : 3 + localStorm * 19;
       thunderChance = strike ? 0.015 : localStorm >= 0.8 ? 0.003 + localStorm * 0.012 : 0;
+      if (!rainCount && !lightningTimer && !thunderChance) {
+        if (hadRainOrLightning) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        hadRainOrLightning = false;
+        dryTimerId = window.setTimeout(render, 100);
+        return;
+      }
+      hadRainOrLightning = true;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       // 雷光フラッシュ
@@ -62,13 +69,12 @@ export default function StormCanvas({ isBattle = false, strengthBased = false, f
       ctx.strokeStyle = "rgba(180, 220, 255, 0.45)";
       ctx.lineWidth = 1.5;
 
-      raindrops.forEach((drop, index) => {
-        if (index >= rainCount) return;
+      ctx.beginPath();
+      for (let index = 0; index < rainCount; index += 1) {
+        const drop = raindrops[index];
         drop.speedX = windSpeed + 1.5;
-        ctx.beginPath();
         ctx.moveTo(drop.x, drop.y);
         ctx.lineTo(drop.x + drop.speedX * 0.6, drop.y + drop.len);
-        ctx.stroke();
 
         drop.y += drop.speedY;
         drop.x += drop.speedX;
@@ -77,7 +83,8 @@ export default function StormCanvas({ isBattle = false, strengthBased = false, f
           drop.y = -20;
           drop.x = Math.random() * (canvas.width + 300) - 150;
         }
-      });
+      }
+      if (rainCount) ctx.stroke();
 
       animationId = requestAnimationFrame(render);
     };
@@ -87,6 +94,7 @@ export default function StormCanvas({ isBattle = false, strengthBased = false, f
     return () => {
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animationId);
+      window.clearTimeout(dryTimerId);
     };
   }, [isBattle, strengthBased, flashAboveGround, isPaused]);
 
@@ -105,3 +113,5 @@ export default function StormCanvas({ isBattle = false, strengthBased = false, f
     />
   );
 }
+
+export default React.memo(StormCanvas);
