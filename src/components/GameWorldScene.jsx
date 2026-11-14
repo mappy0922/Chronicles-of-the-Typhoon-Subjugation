@@ -19,7 +19,7 @@ const getTyphoonType = (intensity) => {
   if (intensity <= 0.94) return "large";
   return "complex";
 };
-const BOSS_MAX_HP = { breeze: 1000, rain: 3000, gale: 5000, large: 10000, complex: 20000 };
+const BOSS_MAX_HP = { breeze: 2000, rain: 6000, gale: 10000, large: 20000, complex: 40000 };
 const BATTLE_JUMP_ATTACK_POSITION = 64;
 const BATTLE_JUMP_TRIGGER_RANGE = 15;
 const BATTLE_JUMP_TARGET_STANDOFF = 6;
@@ -36,6 +36,7 @@ const SPECIAL_CHARGE_DURATION = 300_000;
 const FOCUS_TARGETS = [
   { id: "head", label: "\u982d", x: 50, y: 22 },
   { id: "eyes", label: "\u76ee", x: 50, y: 43 },
+  { id: "body", label: "\u4f53", x: 50, y: 64 },
   { id: "hand", label: "\u624b", x: 76, y: 68 },
   { id: "foot", label: "\u8db3", x: 50, y: 91 }
 ];
@@ -47,7 +48,7 @@ const EYE_BARRIER_CELLS = [
 ];
 const EYE_BARRIER_WIDTHS = { breeze: "36%", rain: "42%", gale: "38%", large: "46%", complex: "42%" };
 const FOCUS_MARK_OFFSETS = {
-  breeze: { eyes: { x: -5, y: 13 }, foot: { x: 6 } },
+  breeze: { eyes: { x: -5, y: 13 }, body: { y: 12 }, foot: { x: 6 } },
   rain: { all: { x: -2, y: 2 }, eyes: { x: -14, y: 5 }, rightHand: { x: 4, y: -4 } },
   large: { all: { x: -2 }, eyes: { x: -6 }, rightHand: { x: 6 } },
   complex: { eyes: { x: -10 }, rightHand: { y: -6 }, leftHand: { x: -6 } },
@@ -945,13 +946,14 @@ export default function GameWorldScene() {
 
   const moveBattleFocus = (direction) => {
     if (bossDefeatedRef.current) return;
+    const handFocusIndex = FOCUS_TARGETS.findIndex((target) => target.id === "hand");
     if (direction === "left" || direction === "right") {
-      if (focusTargetIndex === 2) setHandSide((currentSide) => currentSide === "right" ? "left" : "right");
+      if (focusTargetIndex === handFocusIndex) setHandSide((currentSide) => currentSide === "right" ? "left" : "right");
       return;
     }
     const nextIndex = (focusTargetIndex + direction + FOCUS_TARGETS.length) % FOCUS_TARGETS.length;
     setFocusTargetIndex(nextIndex);
-    if (nextIndex === 2) setHandSide("right");
+    if (nextIndex === handFocusIndex) setHandSide("right");
   };
   battleFocusHandlerRef.current = moveBattleFocus;
 
@@ -969,7 +971,17 @@ export default function GameWorldScene() {
     const attackLeft = battleBounds && bossBounds
       ? Math.max(0, Math.min(100, ((bossBounds.left + (attackTarget.x / 100) * bossBounds.width - battleBounds.left) / battleBounds.width) * 100))
       : BATTLE_JUMP_ATTACK_POSITION;
-    if (Math.abs(attackLeft - currentPosition) > BATTLE_JUMP_TRIGGER_RANGE) return false;
+    const withinFocusedBossJumpRange = Boolean(
+      focusModeRef.current
+      && battleBounds
+      && bossBounds
+      && (() => {
+        const playerCenterX = battleBounds.left + (currentPosition / 100) * battleBounds.width;
+        const reach = battleBounds.width * (BATTLE_JUMP_TRIGGER_RANGE / 100);
+        return playerCenterX >= bossBounds.left - reach && playerCenterX <= bossBounds.right + reach;
+      })()
+    );
+    if (!withinFocusedBossJumpRange && Math.abs(attackLeft - currentPosition) > BATTLE_JUMP_TRIGGER_RANGE) return false;
     const attackPointX = battleBounds ? battleBounds.left + (attackLeft / 100) * battleBounds.width : attackLeft;
     const currentPlayerX = battleBounds ? battleBounds.left + (currentPosition / 100) * battleBounds.width : currentPosition;
     const attackSide = currentPlayerX < attackPointX ? -1 : 1;
@@ -1130,7 +1142,16 @@ export default function GameWorldScene() {
       const attackLeft = battleBounds && bossBounds
         ? ((bossBounds.left + (attackTarget.x / 100) * bossBounds.width - battleBounds.left) / battleBounds.width) * 100
         : BATTLE_JUMP_ATTACK_POSITION;
-      if (Math.abs(attackLeft - battlePlayerLeftRef.current) > BATTLE_JUMP_TRIGGER_RANGE) {
+      const focusedGroundAttack = battleGroundedRef.current && focusModeRef.current;
+      const playerCenterX = battleBounds
+        ? battleBounds.left + (battlePlayerLeftRef.current / 100) * battleBounds.width
+        : battlePlayerLeftRef.current;
+      const overallBossRange = battleBounds ? battleBounds.width * (BATTLE_JUMP_TRIGGER_RANGE / 100) : 0;
+      const withinBossRange = Boolean(bossBounds && playerCenterX >= bossBounds.left - overallBossRange && playerCenterX <= bossBounds.right + overallBossRange);
+      const outOfRange = focusedGroundAttack
+        ? !withinBossRange
+        : Math.abs(attackLeft - battlePlayerLeftRef.current) > BATTLE_JUMP_TRIGGER_RANGE;
+      if (outOfRange) {
         if (command === "fight") {
           window.clearInterval(bossHitTimeoutRef.current);
           setBossHitEffect(null);
@@ -1157,26 +1178,35 @@ export default function GameWorldScene() {
         }
         const playerX = currentBattleBounds.left + (battlePlayerLeftRef.current / 100) * currentBattleBounds.width;
         const playerY = currentPlayerBounds.top + currentPlayerBounds.height / 2;
-        const currentTargets = [
-          ...FOCUS_TARGETS.filter((target) => target.id !== "hand").map((target) => orientBossTarget(getAdjustedFocusTarget(target.id, bossType, handSide), bossFlippedRef.current)),
-          orientBossTarget(getAdjustedFocusTarget("hand-left", bossType, handSide), bossFlippedRef.current),
-          orientBossTarget(getAdjustedFocusTarget("hand-right", bossType, handSide), bossFlippedRef.current)
-        ];
-        const verticalHitRange = Math.max(36, currentBossBounds.height * BATTLE_TARGET_HIT_RANGE);
-        const inRangeTargets = currentTargets.map((target) => {
-          const isFootTarget = target.id === "foot";
-          if (isFootTarget && !battleGroundedRef.current) return null;
-          const targetX = currentBossBounds.left + (target.x / 100) * currentBossBounds.width;
-          const targetY = currentBossBounds.top + (target.y / 100) * currentBossBounds.height;
-          const deltaX = Math.abs(playerX - targetX);
-          const deltaY = Math.abs(playerY - targetY);
-          const horizontalHitRange = isFootTarget
-            ? currentBattleBounds.width * (BATTLE_FOOT_HIT_RANGE_PERCENT / 100)
-            : Math.max(36, currentBossBounds.width * BATTLE_TARGET_HIT_RANGE);
-          if (deltaX > horizontalHitRange || (!isFootTarget && deltaY > verticalHitRange)) return null;
-          return { target, score: deltaX / horizontalHitRange + (isFootTarget ? 0 : deltaY / verticalHitRange) };
-        }).filter(Boolean);
-        const hitTarget = inRangeTargets.reduce((nearest, candidate) => !nearest || candidate.score < nearest.score ? candidate : nearest, null)?.target;
+        let hitTarget = null;
+        if (battleGroundedRef.current && focusModeRef.current) {
+          const overallRange = currentBattleBounds.width * (BATTLE_JUMP_TRIGGER_RANGE / 100);
+          const insideOverallRange = playerX >= currentBossBounds.left - overallRange && playerX <= currentBossBounds.right + overallRange;
+          if (insideOverallRange) {
+            hitTarget = orientBossTarget(getAdjustedFocusTarget(focusTarget.id, bossType, handSide), bossFlippedRef.current);
+          }
+        } else {
+          const currentTargets = [
+            ...FOCUS_TARGETS.filter((target) => target.id !== "hand").map((target) => orientBossTarget(getAdjustedFocusTarget(target.id, bossType, handSide), bossFlippedRef.current)),
+            orientBossTarget(getAdjustedFocusTarget("hand-left", bossType, handSide), bossFlippedRef.current),
+            orientBossTarget(getAdjustedFocusTarget("hand-right", bossType, handSide), bossFlippedRef.current)
+          ];
+          const verticalHitRange = Math.max(36, currentBossBounds.height * BATTLE_TARGET_HIT_RANGE);
+          const inRangeTargets = currentTargets.map((target) => {
+            const isFootTarget = target.id === "foot";
+            if (isFootTarget && !battleGroundedRef.current) return null;
+            const targetX = currentBossBounds.left + (target.x / 100) * currentBossBounds.width;
+            const targetY = currentBossBounds.top + (target.y / 100) * currentBossBounds.height;
+            const deltaX = Math.abs(playerX - targetX);
+            const deltaY = Math.abs(playerY - targetY);
+            const horizontalHitRange = isFootTarget
+              ? currentBattleBounds.width * (BATTLE_FOOT_HIT_RANGE_PERCENT / 100)
+              : Math.max(36, currentBossBounds.width * BATTLE_TARGET_HIT_RANGE);
+            if (deltaX > horizontalHitRange || (!isFootTarget && deltaY > verticalHitRange)) return null;
+            return { target, score: deltaX / horizontalHitRange + (isFootTarget ? 0 : deltaY / verticalHitRange) };
+          }).filter(Boolean);
+          hitTarget = inRangeTargets.reduce((nearest, candidate) => !nearest || candidate.score < nearest.score ? candidate : nearest, null)?.target;
+        }
         if (!hitTarget) {
           battleJumpAttackConnectedRef.current = false;
           return;
