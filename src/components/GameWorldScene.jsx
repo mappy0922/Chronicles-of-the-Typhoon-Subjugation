@@ -25,6 +25,11 @@ const BATTLE_JUMP_TRIGGER_RANGE = 15;
 const BATTLE_JUMP_TARGET_STANDOFF = 6;
 const BATTLE_JUMP_LUNGE_DURATION = 180;
 const BATTLE_JUMP_LANDING_DURATION = 100;
+const BATTLE_AIR_LUNGE_GAP_PX = 32;
+const BATTLE_AIR_LUNGE_STEP_PERCENT = 2;
+const BATTLE_AIR_LUNGE_DECAY = 0.7;
+const BATTLE_TARGET_HIT_RANGE = 0.16;
+const BATTLE_FOOT_HIT_RANGE_PERCENT = 17;
 const BATTLE_ATTACK_FRAME_INTERVAL = 150;
 const BATTLE_ATTACK_MASH_WINDOW = 280;
 const SPECIAL_CHARGE_DURATION = 300_000;
@@ -349,7 +354,6 @@ export default function GameWorldScene() {
   const [bossHorizontalOffset, setBossHorizontalOffset] = useState(0);
   const [eyeBarrierPhase, setEyeBarrierPhaseValue] = useState("inactive");
   const [eyeBarrierRevealOrder, setEyeBarrierRevealOrder] = useState(() => EYE_BARRIER_CELLS.map((_, index) => index));
-  const [battleFollowingBoss, setBattleFollowingBoss] = useState(false);
   const [showBossGauge, setShowBossGauge] = useState(false);
   const [bossGaugeCharge, setBossGaugeCharge] = useState(0);
   const [bossGaugeDamage, setBossGaugeDamage] = useState(0);
@@ -373,8 +377,9 @@ export default function GameWorldScene() {
   const mapIndexRef = useRef(1);
   const positionRef = useRef(48);
   const battlePlayerLeftRef = useRef(24);
+  const battleFacingRef = useRef(facing);
+  battleFacingRef.current = facing;
   const bossHorizontalOffsetRef = useRef(0);
-  const bossFollowTimeoutRef = useRef(null);
   const bossMovementTimeoutRef = useRef(null);
   const bossMovementInProgressRef = useRef(false);
   const eyeBarrierPhaseRef = useRef("inactive");
@@ -389,6 +394,7 @@ export default function GameWorldScene() {
   const battleJumpAttackHasRepeatedRef = useRef(false);
   const battleJumpAttackFrameIndexRef = useRef(0);
   const battleJumpAttackReadyRef = useRef(false);
+  const battleAirLungeCountRef = useRef(0);
   const battleJumpAttackConnectedRef = useRef(false);
   const battleJumpAttackTargetRef = useRef(null);
   const battleJumpAttackBossFlippedRef = useRef(false);
@@ -405,6 +411,37 @@ export default function GameWorldScene() {
   const battleGroundedRef = useRef(true);
   const changeJumpAttackFrame = (frame) => {
     setBattleJumpAttackFrame(frame);
+    if (frame === 2) {
+      lungeTowardBossForAirSwing();
+      battleJumpAttackHitRef.current?.();
+    }
+    if (frame === 3 && battleJumpAttackHasRepeatedRef.current) {
+      battleJumpAttackHitRef.current?.();
+    }
+  };
+  const lungeTowardBossForAirSwing = () => {
+    if (!battleJumpActiveRef.current || battleAttackPhaseRef.current !== "attack"
+      || !battleJumpAttackReadyRef.current || pausedRef.current) return;
+    const encounterBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
+    const bossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
+    const targetId = battleJumpAttackTargetRef.current;
+    if (!encounterBounds || !bossBounds || encounterBounds.width <= 0 || !targetId || targetId === "foot") return;
+
+    const target = orientBossTarget(getAdjustedFocusTarget(targetId, bossType, handSide), bossFlippedRef.current);
+    const targetX = bossBounds.left + (target.x / 100) * bossBounds.width;
+    const playerX = encounterBounds.left + (battlePlayerLeftRef.current / 100) * encounterBounds.width;
+    const horizontalGap = targetX - playerX;
+    const attackRange = Math.max(BATTLE_AIR_LUNGE_GAP_PX, bossBounds.width * BATTLE_TARGET_HIT_RANGE);
+    if (Math.abs(horizontalGap) <= attackRange) return;
+
+    const direction = battleFacingRef.current;
+    if (direction === 0) return;
+    const stepPercent = BATTLE_AIR_LUNGE_STEP_PERCENT * Math.pow(BATTLE_AIR_LUNGE_DECAY, battleAirLungeCountRef.current);
+    const nextLeft = Math.max(0, Math.min(100, battlePlayerLeftRef.current + direction * stepPercent));
+    if (nextLeft === battlePlayerLeftRef.current) return;
+    battleAirLungeCountRef.current += 1;
+    battlePlayerLeftRef.current = nextLeft;
+    setBattlePlayerLeft(nextLeft);
   };
   const resetJumpAttackFrames = () => {
     setBattleJumpAttackFrame(null);
@@ -463,7 +500,6 @@ export default function GameWorldScene() {
   freezeBattlePlayerRef.current = () => {
     if (movementInterval.current) window.clearInterval(movementInterval.current);
     movementInterval.current = null;
-    window.clearTimeout(bossFollowTimeoutRef.current);
     const encounterBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
     const playerBounds = document.querySelector(".strike-player-position")?.getBoundingClientRect();
     if (encounterBounds && playerBounds && encounterBounds.width > 0) {
@@ -471,7 +507,6 @@ export default function GameWorldScene() {
       battlePlayerLeftRef.current = frozenPosition;
       setBattlePlayerLeft(frozenPosition);
     }
-    setBattleFollowingBoss(false);
     setMoving(false);
     if (battleFootAttackTimerActiveRef.current) stopGroundedFootAttackRef.current?.();
     finishBattleJumpRef.current?.();
@@ -500,15 +535,11 @@ export default function GameWorldScene() {
     if (!bossFlipped && playerBackX > bossBounds.right - bossBackSideInset) {
       if (handJumpMiss) {
         battleJumpAttackConnectedRef.current = false;
-        window.clearTimeout(bossFollowTimeoutRef.current);
-        setBattleFollowingBoss(false);
       }
       setBossFlipped(true);
     } else if (bossFlipped && playerBackX < bossBounds.left + bossBackSideInset) {
       if (handJumpMiss) {
         battleJumpAttackConnectedRef.current = false;
-        window.clearTimeout(bossFollowTimeoutRef.current);
-        setBattleFollowingBoss(false);
       }
       setBossFlipped(false);
     }
@@ -517,8 +548,6 @@ export default function GameWorldScene() {
   useEffect(() => {
     if (!battleActive || !battleCommandsReady || !typhoonAppearance || bossDefeating || isPaused) {
       if (!battleActive || !typhoonAppearance) {
-        window.clearTimeout(bossFollowTimeoutRef.current);
-        setBattleFollowingBoss(false);
         bossHorizontalOffsetRef.current = 0;
         setBossHorizontalOffset(0);
       }
@@ -527,7 +556,7 @@ export default function GameWorldScene() {
 
     const movementTimer = window.setInterval(() => {
       if (eyeBarrierPhaseRef.current === "pending" || eyeBarrierPhaseRef.current === "revealing") return;
-      if (Math.random() >= 0.4) return;
+      if (Math.random() >= 0.6) return;
       const encounterBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
       const arrivalBounds = document.querySelector(".typhoon-strike-arrival")?.getBoundingClientRect();
       const bossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
@@ -552,14 +581,6 @@ export default function GameWorldScene() {
         bossMovementInProgressRef.current = false;
         eyeBarrierRevealCheckRef.current?.();
       }, 700);
-      if (battleJumpActiveRef.current && battleAttackPhaseRef.current === "attack" && battleJumpAttackConnectedRef.current) {
-        const nextPlayerLeft = Math.max(0, Math.min(100, battlePlayerLeftRef.current + (offsetDelta / encounterBounds.width) * 100));
-        battlePlayerLeftRef.current = nextPlayerLeft;
-        setBattlePlayerLeft(nextPlayerLeft);
-        setBattleFollowingBoss(true);
-        window.clearTimeout(bossFollowTimeoutRef.current);
-        bossFollowTimeoutRef.current = window.setTimeout(() => setBattleFollowingBoss(false), 700);
-      }
     }, 1800);
 
     return () => window.clearInterval(movementTimer);
@@ -649,11 +670,11 @@ export default function GameWorldScene() {
     battleAttackHasRepeatedRef.current = false;
     setBattleAttackFrame(null);
     resetJumpAttackFrames();
-    setBattleFollowingBoss(false);
     setBattleJumpTargetTop(battleJumpGroundTopRef.current);
     const landingTimer = scheduleWhileUnpaused(() => {
       transitionTimers.current = transitionTimers.current.filter((timer) => timer !== landingTimer);
       battleGroundedRef.current = true;
+      battleAirLungeCountRef.current = 0;
       battleJumpActiveRef.current = false;
       battleAttackPhaseRef.current = "none";
       battleJumpUsesMashAttackRef.current = false;
@@ -661,7 +682,6 @@ export default function GameWorldScene() {
       setBattleJumpActive(false);
       setBattleJumpFlipped(false);
       setBattleJumpTargetTop(null);
-      setBattleFollowingBoss(false);
       eyeBarrierRevealCheckRef.current?.();
     }, BATTLE_JUMP_LANDING_DURATION);
     transitionTimers.current.push(landingTimer);
@@ -669,7 +689,6 @@ export default function GameWorldScene() {
 
   const startGroundedFootAttack = (flipped) => {
     setBattleAttackFlipped(flipped);
-    setBattleFollowingBoss(false);
     if (movementInterval.current) window.clearInterval(movementInterval.current);
     movementInterval.current = null;
     setMoving(false);
@@ -700,7 +719,6 @@ export default function GameWorldScene() {
         battleFootAttackTimerActiveRef.current = false;
         setBattleAttackFrame(null);
         setBattleAttackFlipped(false);
-        setBattleFollowingBoss(false);
         return;
       }
       const attackFrames = [1, 2, 3, 2, 1, 2];
@@ -720,7 +738,6 @@ export default function GameWorldScene() {
     battleFootAttackTimerActiveRef.current = false;
     setBattleAttackFrame(null);
     setBattleAttackFlipped(false);
-    setBattleFollowingBoss(false);
   };
 
   useEffect(() => {
@@ -923,7 +940,6 @@ export default function GameWorldScene() {
     window.clearInterval(bossHitTimeoutRef.current);
     window.clearInterval(battleAttackFrameTimerRef.current);
     window.clearInterval(battleJumpAttackFrameTimerRef.current);
-    window.clearTimeout(bossFollowTimeoutRef.current);
     window.clearTimeout(bossMovementTimeoutRef.current);
   }, []);
 
@@ -943,6 +959,7 @@ export default function GameWorldScene() {
     if (attackTarget.id === "foot") return false;
     if (pausedRef.current || !battleActiveRef.current || !battleCommandsReadyRef.current || !battleGroundedRef.current) return false;
     if (battleFootAttackTimerActiveRef.current) stopGroundedFootAttackRef.current?.();
+    battleAirLungeCountRef.current = 0;
     const currentPosition = battlePlayerLeftRef.current;
 
     const battleBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
@@ -982,7 +999,8 @@ export default function GameWorldScene() {
     setBattleJumpFlipped(attackSide > 0);
     setBattleJumpTargetTop(attackTop);
     setBattlePlayerHasMoved(true);
-    setFacing(attackSide > 0 ? -1 : 1);
+    battleFacingRef.current = attackSide > 0 ? -1 : 1;
+    setFacing(battleFacingRef.current);
     setMoving(false);
     if (movementInterval.current) {
       window.clearInterval(movementInterval.current);
@@ -997,7 +1015,6 @@ export default function GameWorldScene() {
         battleJumpAttackMashRemainingRef.current = BATTLE_ATTACK_MASH_WINDOW;
       }
       changeJumpAttackFrame(2);
-      onImpact?.();
       if (battleAttackPhaseRef.current !== "attack") return;
       window.clearInterval(battleJumpAttackFrameTimerRef.current);
       battleJumpAttackFrameIndexRef.current = 0;
@@ -1029,7 +1046,6 @@ export default function GameWorldScene() {
       && ["jump", "attack"].includes(battleAttackPhaseRef.current)) {
       battleJumpAttackHasRepeatedRef.current = true;
       battleJumpAttackMashRemainingRef.current = BATTLE_ATTACK_MASH_WINDOW;
-      if (battleAttackPhaseRef.current === "attack") battleJumpAttackHitRef.current?.();
       return;
     }
     if (pausedRef.current || !battleCommandsReadyRef.current || !battleGroundedRef.current || eyeBarrierPhaseRef.current === "pending" || eyeBarrierPhaseRef.current === "revealing") return;
@@ -1111,7 +1127,6 @@ export default function GameWorldScene() {
             return candidateDistance < nearestDistance ? candidate : nearest;
           })
           : getAdjustedFocusTarget("head", bossType, handSide);
-      const bossFlippedAtAttackStart = bossFlipped;
       const attackLeft = battleBounds && bossBounds
         ? ((bossBounds.left + (attackTarget.x / 100) * bossBounds.width - battleBounds.left) / battleBounds.width) * 100
         : BATTLE_JUMP_ATTACK_POSITION;
@@ -1128,44 +1143,54 @@ export default function GameWorldScene() {
       if (attackTarget.id === "foot") {
         setBattlePlayerHasMoved(true);
         attackFacing = battlePlayerLeftRef.current > attackLeft ? -1 : 1;
+        battleFacingRef.current = attackFacing;
         setFacing(attackFacing);
       }
 
-      const isHandTarget = attackTarget.id === "hand-left" || attackTarget.id === "hand-right" || attackTarget.id === "hand";
-      const focusedAttack = focusModeRef.current;
       const applyAttackHit = () => {
-        if (isHandTarget && bossFlippedRef.current !== bossFlippedAtAttackStart) {
-          if (focusedAttack) {
-            battleJumpAttackConnectedRef.current = false;
-            window.clearTimeout(bossFollowTimeoutRef.current);
-            setBattleFollowingBoss(false);
-            return;
-          }
+        const currentBattleBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
+        const currentBossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
+        const currentPlayerBounds = document.querySelector(".strike-player-position")?.getBoundingClientRect();
+        if (!currentBattleBounds || !currentBossBounds || !currentPlayerBounds || currentBattleBounds.width <= 0) {
+          battleJumpAttackConnectedRef.current = false;
+          return;
         }
+        const playerX = currentBattleBounds.left + (battlePlayerLeftRef.current / 100) * currentBattleBounds.width;
+        const playerY = currentPlayerBounds.top + currentPlayerBounds.height / 2;
+        const currentTargets = [
+          ...FOCUS_TARGETS.filter((target) => target.id !== "hand").map((target) => orientBossTarget(getAdjustedFocusTarget(target.id, bossType, handSide), bossFlippedRef.current)),
+          orientBossTarget(getAdjustedFocusTarget("hand-left", bossType, handSide), bossFlippedRef.current),
+          orientBossTarget(getAdjustedFocusTarget("hand-right", bossType, handSide), bossFlippedRef.current)
+        ];
+        const verticalHitRange = Math.max(36, currentBossBounds.height * BATTLE_TARGET_HIT_RANGE);
+        const inRangeTargets = currentTargets.map((target) => {
+          const isFootTarget = target.id === "foot";
+          if (isFootTarget && !battleGroundedRef.current) return null;
+          const targetX = currentBossBounds.left + (target.x / 100) * currentBossBounds.width;
+          const targetY = currentBossBounds.top + (target.y / 100) * currentBossBounds.height;
+          const deltaX = Math.abs(playerX - targetX);
+          const deltaY = Math.abs(playerY - targetY);
+          const horizontalHitRange = isFootTarget
+            ? currentBattleBounds.width * (BATTLE_FOOT_HIT_RANGE_PERCENT / 100)
+            : Math.max(36, currentBossBounds.width * BATTLE_TARGET_HIT_RANGE);
+          if (deltaX > horizontalHitRange || (!isFootTarget && deltaY > verticalHitRange)) return null;
+          return { target, score: deltaX / horizontalHitRange + (isFootTarget ? 0 : deltaY / verticalHitRange) };
+        }).filter(Boolean);
+        const hitTarget = inRangeTargets.reduce((nearest, candidate) => !nearest || candidate.score < nearest.score ? candidate : nearest, null)?.target;
+        if (!hitTarget) {
+          battleJumpAttackConnectedRef.current = false;
+          return;
+        }
+
+        const hitTargetX = currentBossBounds.left + (hitTarget.x / 100) * currentBossBounds.width;
+        const hitFacing = hitTargetX >= playerX ? 1 : -1;
+        battleFacingRef.current = hitFacing;
+        setFacing(hitFacing);
+        if (battleJumpActiveRef.current) setBattleJumpFlipped(hitFacing < 0);
+        else setBattleAttackFlipped(hitFacing < 0);
+
         battleJumpAttackConnectedRef.current = true;
         const critical = Math.random() < 0.03;
-        let hitTarget = attackTarget;
-        if (isHandTarget && bossFlippedRef.current !== bossFlippedAtAttackStart) {
-          const currentBattleBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
-          const currentBossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
-          const currentPlayerBounds = document.querySelector(".strike-player-position img")?.getBoundingClientRect();
-          if (currentBattleBounds && currentBossBounds && currentPlayerBounds) {
-            const currentTargets = [
-              ...FOCUS_TARGETS.filter((target) => target.id !== "hand").map((target) => orientBossTarget(getAdjustedFocusTarget(target.id, bossType, handSide), bossFlippedRef.current)),
-              orientBossTarget(getAdjustedFocusTarget("hand-left", bossType, handSide), bossFlippedRef.current),
-              orientBossTarget(getAdjustedFocusTarget("hand-right", bossType, handSide), bossFlippedRef.current)
-            ];
-            const playerX = currentPlayerBounds.left + currentPlayerBounds.width / 2;
-            const playerY = currentPlayerBounds.top + currentPlayerBounds.height / 2;
-            hitTarget = currentTargets.reduce((nearest, candidate) => {
-              const candidateX = currentBossBounds.left + (candidate.x / 100) * currentBossBounds.width;
-              const candidateY = currentBossBounds.top + (candidate.y / 100) * currentBossBounds.height;
-              const nearestX = currentBossBounds.left + (nearest.x / 100) * currentBossBounds.width;
-              const nearestY = currentBossBounds.top + (nearest.y / 100) * currentBossBounds.height;
-              return Math.hypot(candidateX - playerX, candidateY - playerY) < Math.hypot(nearestX - playerX, nearestY - playerY) ? candidate : nearest;
-            });
-          }
-        }
         const finalDamage = baseDamage * (hitTarget.id === "eyes" ? 2 : 1) * (critical ? 3 : 1);
         dealBossDamage(finalDamage, critical, hitTarget);
       };
@@ -1215,9 +1240,8 @@ export default function GameWorldScene() {
           stopMovement();
           return;
         }
+        battleFacingRef.current = direction;
         setFacing(direction);
-        window.clearTimeout(bossFollowTimeoutRef.current);
-        setBattleFollowingBoss(false);
         setBattlePlayerHasMoved(true);
         const battleStep = 3.6;
         const nextLeft = Math.max(0, Math.min(100, battlePlayerLeftRef.current + direction * battleStep));
@@ -1225,6 +1249,7 @@ export default function GameWorldScene() {
         setBattlePlayerLeft(nextLeft);
         return;
       }
+      battleFacingRef.current = direction;
       setFacing(direction);
       const stepSize = shiftHeld.current ? 2.6 : 1.5;
       const nextPosition = Math.max(0, Math.min(100, positionRef.current + direction * stepSize));
@@ -1564,6 +1589,7 @@ export default function GameWorldScene() {
   }, [isStrike]);
   useEffect(() => {
     if (battleActive) return;
+    battleFacingRef.current = 1;
     setFacing(1);
     eyesBarrierActivatedRef.current = false;
     bossMovementInProgressRef.current = false;
@@ -1735,7 +1761,7 @@ export default function GameWorldScene() {
       {(mapTransition === "loading" || mapTransition === "fade-in") && <div className={`map-loading-indicator ${mapTransition === "fade-in" ? "is-fading" : ""}`}>{"\u30ED\u30FC\u30C9\u4E2D..."}</div>}
       {(mapTransition === "fade-out" || mapTransition === "loading") && <div className={`map-transition-curtain ${mapTransition === "fade-out" ? "is-fading-out" : ""}`} aria-hidden="true" />}
       {battleActive && typhoonAppearance && <div className="strike-encounter" aria-label="\u4E3B\u4EBA\u516C\u3068\u53F0\u98A8\u306E\u5BFE\u5CD9">
-        <div className={`strike-player-position ${battleJumpActive ? "is-jumping" : ""} ${battleAttackFrame || battleJumpAttackFrame ? "is-attacking" : ""} ${battleFollowingBoss ? "is-following-boss" : ""} ${eyeBarrierLocked ? "is-barrier-locked" : ""}`} style={{ left: `${battlePlayerLeft}%`, top: battleJumpActive && battleJumpTargetTop !== null ? `${battleJumpTargetTop}px` : undefined }}>
+        <div className={`strike-player-position ${battleJumpActive ? "is-jumping" : ""} ${battleAttackFrame || battleJumpAttackFrame ? "is-attacking" : ""} ${eyeBarrierLocked ? "is-barrier-locked" : ""}`} style={{ left: `${battlePlayerLeft}%`, top: battleJumpActive && battleJumpTargetTop !== null ? `${battleJumpTargetTop}px` : undefined }}>
           <span className="world-player-shadow battle-player-shadow" aria-hidden="true" />
           <img
             className={battlePlayerSpriteClasses}

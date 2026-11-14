@@ -45,8 +45,6 @@
 .strike-player-position { z-index:2; left:24%; transform:translateX(-50%); transition:left .1s linear; }
 .strike-player-position.is-attacking { z-index:5; translate:0 0; }
 .strike-player-position.is-jumping { top:var(--jump-target-top, 45%); bottom:auto; transform:translate(-50%,-50%); transition:left .18s cubic-bezier(.2,.75,.25,1),top .1s ease-out; }
-.strike-player-position.is-following-boss { transition:left .65s ease-in-out; }
-.strike-player-position.is-jumping.is-following-boss { transition:left .65s ease-in-out,top .1s ease-out; }
 .strike-player-position.is-barrier-locked { transition:none!important; }
 .strike-player-position.is-jumping.is-barrier-locked { transition:top .1s ease-out!important; }
 .strike-player-position img { position:relative; z-index:1; display:block; width:auto; height:100%; max-width:100%; object-fit:contain; filter:drop-shadow(0 5px 3px rgba(0,0,0,.3)); }
