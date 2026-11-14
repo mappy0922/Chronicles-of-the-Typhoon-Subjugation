@@ -70,6 +70,15 @@ const getAdjustedFocusTarget = (targetId, typhoonType, handSide = "right") => {
 };
 const orientBossTarget = (target, flipped) => flipped ? { ...target, x: 100 - target.x } : target;
 
+function EdgeShadedImage({ src, alt = "", className = "", wrapperClassName = "", style }) {
+  return (
+    <span className={`edge-shade-wrap ${wrapperClassName}`.trim()} style={style}>
+      <img src={src} alt={alt} className={className} />
+      <img src={src} alt="" aria-hidden="true" className="edge-shade-overlay" />
+    </span>
+  );
+}
+
 const HOUSE_LAYOUTS = [
   {
     back: [],
@@ -1645,6 +1654,30 @@ export default function GameWorldScene() {
     : shadowDistance > 0
       ? -180 - shadowTurnAngle
       : -180;
+  const battlePlayerSprite = battleJumpAttackFrame === "jump"
+    ? isMale ? "/man_battle_jump-cutout.png" : "/woman_battle_jump-cutout.png"
+    : battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3
+      ? `/${isMale ? "man" : "woman"}_attack_jump${battleJumpAttackFrame}-cutout.png`
+      : battleAttackFrame
+        ? `/${isMale ? "man" : "woman"}_attack${battleAttackFrame}${isMale ? ".png" : "-cutout.png"}`
+        : battleJumpActive
+          ? isMale ? "/man_battle_jump-cutout.png" : "/woman_battle_jump-cutout.png"
+          : isMale
+            ? moving
+              ? (facing < 0 ? MALE_BATTLE_LEFT_WALK_FRAMES : MALE_BATTLE_RIGHT_WALK_FRAMES)[(walkFrame - 1) % MALE_BATTLE_LEFT_WALK_FRAMES.length]
+              : battlePlayerHasMoved
+                ? facing < 0 ? "/left_man_battle_idle.png" : "/right_man_battle_idle.png"
+                : "/man_battle_idle.png"
+            : moving
+              ? (facing < 0 ? FEMALE_BATTLE_LEFT_WALK_FRAMES : FEMALE_BATTLE_RIGHT_WALK_FRAMES)[(walkFrame - 1) % FEMALE_BATTLE_LEFT_WALK_FRAMES.length]
+              : battlePlayerHasMoved
+                ? facing < 0 ? "/left_woman_battle_idle.png" : "/right_woman_battle_idle.png"
+                : "/woman_battle_idle.png";
+  const battlePlayerSpriteClasses = `${!isMale ? "female-battle-character" : ""} ${!isMale && battleAttackFrame ? "is-female-foot-attack-frame" : ""} ${isMale && battleJumpActive && battleJumpAttackFrame !== 2 && battleJumpAttackFrame !== 3 ? "is-male-jump-frame" : ""} ${battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3 ? "is-jump-attack-frame" : ""} ${battleJumpAttackFrame === "jump" ? "is-jump-transition-frame" : ""} ${(battleJumpActive && battleJumpFlipped) || (battleAttackFrame && battleAttackFlipped) ? "is-flipped" : ""}`.trim();
+  const battlePlayerSpriteStyle = {
+    ...(battleAttackFrame ? { "--attack-baseline-offset": { 1: "1.5%", 2: "3.4%", 3: "-0.9%" }[battleAttackFrame] } : {}),
+    ...(battleJumpAttackFrame === 2 ? { "--jump-attack-baseline-offset": "8px" } : {})
+  };
 
   return (
     <section className={`game-world ${isStrike ? "is-strike" : ""} ${battleActive ? "is-battle-active" : ""} ${isTyphoonTransition ? "is-typhoon-transition" : ""}`} style={{ "--storm-darkness": skyDarkness, "--night-opacity": nightIntensity, "--celestial-opacity": 1 - celestialFade }} aria-label="\u8349\u539F\u306E\u30B2\u30FC\u30E0\u30D5\u30A3\u30FC\u30EB\u30C9">
@@ -1653,14 +1686,14 @@ export default function GameWorldScene() {
         <div className="world-night-shade" />
         <div className="world-sun" />
         <div className="world-houses" aria-hidden="true">
-          {houses.back.map(([src, left, width], index) => <img key={`back-${index}`} className="world-house world-house-back" src={`/${src}`} alt="" style={{ left, width }} />)}
-          {houses.front.map(([src, left, width], index) => <img key={`front-${index}`} className={`world-house world-house-front ${index === houses.front.length - 1 ? "world-house-front-right" : ""}`} src={`/${src}`} alt="" style={{ left, width }} />)}
+          {houses.back.map(([src, left, width], index) => <EdgeShadedImage key={`back-${index}`} wrapperClassName="world-house world-house-back" src={`/${src}`} style={{ left, width }} />)}
+          {houses.front.map(([src, left, width], index) => <EdgeShadedImage key={`front-${index}`} wrapperClassName={`world-house world-house-front ${index === houses.front.length - 1 ? "world-house-front-right" : ""}`} src={`/${src}`} style={{ left, width }} />)}
         </div>
         <div className="world-ground" />
         <div className={`world-player ${moving ? "is-walking" : ""}`} style={{ left: `${position}%`, "--player-shadow-angle": `${playerShadowAngle}deg` }}>
           <span className="world-player-shadow" aria-hidden="true" />
           <img className="world-player-cast-shadow" src={worldPlayerSprite} alt="" aria-hidden="true" />
-          <img
+          <EdgeShadedImage
             className={isMale ? "" : "female-character-sprite"}
             src={worldPlayerSprite}
             alt={player.appearance?.gender === "feminine" ? "\u5973\u6027\u5263\u58EB" : "\u7537\u6027\u5263\u58EB"}
@@ -1683,31 +1716,17 @@ export default function GameWorldScene() {
         <div className={`strike-player-position ${battleJumpActive ? "is-jumping" : ""} ${battleAttackFrame || battleJumpAttackFrame ? "is-attacking" : ""} ${battleFollowingBoss ? "is-following-boss" : ""} ${eyeBarrierLocked ? "is-barrier-locked" : ""}`} style={{ left: `${battlePlayerLeft}%`, top: battleJumpActive && battleJumpTargetTop !== null ? `${battleJumpTargetTop}px` : undefined }}>
           <span className="world-player-shadow battle-player-shadow" aria-hidden="true" />
           <img
-            src={battleJumpAttackFrame === "jump"
-              ? isMale ? "/man_battle_jump-cutout.png" : "/woman_battle_jump-cutout.png"
-              : battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3
-                ? `/${isMale ? "man" : "woman"}_attack_jump${battleJumpAttackFrame}-cutout.png`
-              : battleAttackFrame
-              ? `/${isMale ? "man" : "woman"}_attack${battleAttackFrame}${isMale ? ".png" : "-cutout.png"}`
-              : battleJumpActive
-                ? isMale ? "/man_battle_jump-cutout.png" : "/woman_battle_jump-cutout.png"
-              : isMale
-                ? moving
-                  ? (facing < 0 ? MALE_BATTLE_LEFT_WALK_FRAMES : MALE_BATTLE_RIGHT_WALK_FRAMES)[(walkFrame - 1) % MALE_BATTLE_LEFT_WALK_FRAMES.length]
-                  : battlePlayerHasMoved
-                    ? facing < 0 ? "/left_man_battle_idle.png" : "/right_man_battle_idle.png"
-                    : "/man_battle_idle.png"
-                : moving
-                  ? (facing < 0 ? FEMALE_BATTLE_LEFT_WALK_FRAMES : FEMALE_BATTLE_RIGHT_WALK_FRAMES)[(walkFrame - 1) % FEMALE_BATTLE_LEFT_WALK_FRAMES.length]
-                  : battlePlayerHasMoved
-                    ? facing < 0 ? "/left_woman_battle_idle.png" : "/right_woman_battle_idle.png"
-                    : "/woman_battle_idle.png"}
+            className={battlePlayerSpriteClasses}
+            src={battlePlayerSprite}
             alt={isMale ? "\u7537\u6027\u5263\u58EB" : "\u5973\u6027\u5263\u58EB"}
-            style={{
-              ...(battleAttackFrame ? { "--attack-baseline-offset": { 1: "1.5%", 2: "3.4%", 3: "-0.9%" }[battleAttackFrame] } : {}),
-              ...(battleJumpAttackFrame === 2 ? { "--jump-attack-baseline-offset": "8px" } : {})
-            }}
-            className={`${!isMale ? "female-battle-character" : ""} ${!isMale && battleAttackFrame ? "is-female-foot-attack-frame" : ""} ${isMale && battleJumpActive && battleJumpAttackFrame !== 2 && battleJumpAttackFrame !== 3 ? "is-male-jump-frame" : ""} ${battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3 ? "is-jump-attack-frame" : ""} ${battleJumpAttackFrame === "jump" ? "is-jump-transition-frame" : ""} ${(battleJumpActive && battleJumpFlipped) || (battleAttackFrame && battleAttackFlipped) ? "is-flipped" : ""}`.trim()}
+            style={battlePlayerSpriteStyle}
+          />
+          <img
+            className={`edge-shade-overlay ${battlePlayerSpriteClasses}`}
+            src={battlePlayerSprite}
+            alt=""
+            aria-hidden="true"
+            style={battlePlayerSpriteStyle}
           />
         </div>
         <div
@@ -1737,6 +1756,7 @@ export default function GameWorldScene() {
             <div className="typhoon-boss-art" style={{ transform: `translateX(${bossHorizontalOffset}px)` }}>
               <div key={`boss-hit-${bossHitEffect?.id || "idle"}`} className={`typhoon-boss-content ${bossHitEffect && !bossHitEffect.blocked ? "is-hit" : ""}`}>
               <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className={`typhoon-strike-character ${bossFlipped ? "is-flipped" : ""}`} />
+              <img src={typhoonAppearance.src} alt="" aria-hidden="true" className={`edge-shade-overlay typhoon-strike-character ${bossFlipped ? "is-flipped" : ""}`} />
                 {bossHitEffect && <span
                   key={`boss-sparks-${bossHitEffect.id}`}
                   className="boss-hit-sparks"
