@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { SoundManager } from "../game/services/SoundManager";
-import { formatKeyBinding, getBindingKeys, getKeyBindings, KEY_BINDING_DEFINITIONS, resetKeyBindings, setKeyBinding } from "../game/services/KeyBindings";
+import { bindingsMatchSameInput, formatKeyBinding, getBindingKeys, getKeyBindings, KEY_BINDING_DEFINITIONS, resetKeyBindings, setKeyBinding } from "../game/services/KeyBindings";
 
 const VOLUME_CONTROLS = [
   ["bgm", "BGM"],
@@ -9,7 +9,7 @@ const VOLUME_CONTROLS = [
   ["ambient", "環境音"],
   ["master", "Master Volume"]
 ];
-const DEFAULT_VOLUMES = { bgm: 100, se: 100, voice: 100, ambient: 100, master: 100 };
+const DEFAULT_VOLUMES = { bgm: 50, se: 50, voice: 50, ambient: 50, master: 50 };
 
 export default function SettingsPanel({ onClose }) {
   const [volumes, setVolumes] = useState(() => SoundManager.getVolumes());
@@ -57,14 +57,13 @@ export default function SettingsPanel({ onClose }) {
       if (event.button === 0) suppressCapturedClick.current = true;
       const [action, slotValue] = listening.split(":");
       const slotIndex = Number(slotValue);
-      const group = KEY_BINDING_DEFINITIONS.find((item) => item.id === action)?.group;
       const duplicate = KEY_BINDING_DEFINITIONS
-        .filter((item) => item.group === group || item.id === "shiftModifier" || action === "shiftModifier")
-        .some((item) => getBindingKeys(keyBindings, item.id).some((boundKey, index) =>
-          boundKey === key && (item.id !== action || index !== slotIndex)
+        .filter((item) => item.id !== action)
+        .some((item) => getBindingKeys(keyBindings, item.id).some((boundKey) =>
+          bindingsMatchSameInput(boundKey, key)
         ));
       if (duplicate) {
-        setKeyError("\u540C\u3058\u64CD\u4F5C\u30B0\u30EB\u30FC\u5185\u3067\u306F\u30AD\u30FC\u3092\u91CD\u8907\u3067\u304D\u307E\u305B\u3093\u3002");
+        setKeyError("\u3053\u306E\u5165\u529B\u306F\u3059\u3067\u306B\u4ED6\u306E\u64CD\u4F5C\u306B\u5272\u308A\u5F53\u3066\u3089\u308C\u3066\u3044\u307E\u3059\u3002");
         return;
       }
       setKeyBindings(setKeyBinding(action, slotIndex, key));
@@ -101,21 +100,25 @@ export default function SettingsPanel({ onClose }) {
     if (!listening) return;
     event.preventDefault();
     event.stopPropagation();
-    if (!event.code || event.code === "Unidentified") {
+    const capturedCode = event.key === "Shift"
+      ? event.code?.toLowerCase() === "shiftleft" || event.location === 1
+        ? "ShiftLeft"
+        : "ShiftRight"
+      : event.code && event.code !== "Unidentified" ? event.code : "";
+    if (!capturedCode) {
       setKeyError("\u3053\u306E\u30AD\u30FC\u306F\u767B\u9332\u3067\u304D\u307E\u305B\u3093\u3002");
       return;
     }
     const [action, slotValue] = listening.split(":");
     const slotIndex = Number(slotValue);
-    const key = `code:${event.code}`;
-    const group = KEY_BINDING_DEFINITIONS.find((item) => item.id === action)?.group;
+    const key = `code:${capturedCode}`;
     const duplicate = KEY_BINDING_DEFINITIONS
-      .filter((item) => item.group === group || item.id === "shiftModifier" || action === "shiftModifier")
-      .some((item) => getBindingKeys(keyBindings, item.id).some((boundKey, index) =>
-        boundKey === key && (item.id !== action || index !== slotIndex)
+      .filter((item) => item.id !== action)
+      .some((item) => getBindingKeys(keyBindings, item.id).some((boundKey) =>
+        bindingsMatchSameInput(boundKey, key)
       ));
     if (duplicate) {
-      setKeyError("\u540C\u3058\u64CD\u4F5C\u30B0\u30EB\u30FC\u5185\u3067\u306F\u30AD\u30FC\u3092\u91CD\u8907\u3067\u304D\u307E\u305B\u3093\u3002");
+      setKeyError("\u3053\u306E\u5165\u529B\u306F\u3059\u3067\u306B\u4ED6\u306E\u64CD\u4F5C\u306B\u5272\u308A\u5F53\u3066\u3089\u308C\u3066\u3044\u307E\u3059\u3002");
       return;
     }
     setKeyBindings(setKeyBinding(action, slotIndex, key));

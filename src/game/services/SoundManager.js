@@ -13,13 +13,19 @@ class SoundManagerClass {
     this.rainPlaybackAllowed = false;
     this.rainFadeTimer = null;
     this.gameAudioActive = false;
-    this.defaultVolumes = { bgm: 100, se: 100, voice: 100, ambient: 100, master: 100 };
+    this.defaultVolumes = { bgm: 50, se: 50, voice: 50, ambient: 50, master: 50 };
     this.lastClickAt = 0;
   }
 
   loadVolumes() {
-    const defaults = { bgm: 100, se: 100, voice: 100, ambient: 100, master: 100 };
+    const defaults = { bgm: 50, se: 50, voice: 50, ambient: 50, master: 50 };
     try {
+      const volumeDefaultsVersion = "game-audio-volumes-defaults-version";
+      if (localStorage.getItem(volumeDefaultsVersion) !== "2") {
+        localStorage.setItem("game-audio-volumes", JSON.stringify(defaults));
+        localStorage.setItem(volumeDefaultsVersion, "2");
+        return defaults;
+      }
       const saved = JSON.parse(localStorage.getItem("game-audio-volumes") || "{}");
       for (const key of Object.keys(defaults)) {
         if (Number.isFinite(saved[key])) defaults[key] = Math.max(0, Math.min(100, saved[key]));

@@ -41,6 +41,8 @@ export function getKeyBindings() {
 export function setKeyBinding(action, slotIndex, key) {
   const current = getKeyBindings();
   const slots = [...(current[action] || DEFAULTS[action])];
+  const otherSlotIndex = slotIndex === 0 ? 1 : 0;
+  if (slots[otherSlotIndex] === key.toLowerCase()) slots[otherSlotIndex] = "";
   slots[slotIndex] = key.toLowerCase();
   const next = { ...current, [action]: slots };
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(next)); } catch { /* Ignore unavailable storage. */ }
@@ -66,11 +68,39 @@ export function getBindingKeys(bindings, action) {
   return (Array.isArray(value) ? value : typeof value === "string" ? [value] : []).filter(Boolean);
 }
 
+function bindingIdentity(binding) {
+  const normalized = binding.toLowerCase();
+  if (!normalized.startsWith("code:")) return normalized;
+  const code = normalized.slice(5);
+  if (/^key[a-z]$/.test(code)) return code.slice(3);
+  if (/^digit[0-9]$/.test(code)) return code.slice(5);
+  if (/^numpad[0-9]$/.test(code)) return code.slice(6);
+  const codeToKey = {
+    space: " ", arrowleft: "arrowleft", arrowright: "arrowright", arrowup: "arrowup", arrowdown: "arrowdown",
+    enter: "enter", escape: "escape", backspace: "backspace", delete: "delete", tab: "tab",
+    shiftleft: "shift", shiftright: "shift", controlleft: "control", controlright: "control",
+    altleft: "alt", altright: "alt", metaleft: "meta", metaright: "meta",
+    minus: "-", equal: "=", bracketleft: "[", bracketright: "]", backslash: "\\",
+    semicolon: ";", quote: "'", backquote: "`", comma: ",", period: ".", slash: "/",
+    numpadadd: "+", numpadsubtract: "-", numpadmultiply: "*", numpaddivide: "/", numpaddecimal: "."
+  };
+  return codeToKey[code] || code;
+}
+
+export function bindingsMatchSameInput(first, second) {
+  return bindingIdentity(first) === bindingIdentity(second);
+}
+
 export function matchesKeyBinding(bindings, action, event) {
   const eventKey = event.key.toLowerCase();
-  const eventCode = event.code ? `code:${event.code.toLowerCase()}` : "";
+  const eventCodes = new Set();
+  if (event.code && event.code !== "Unidentified") eventCodes.add(`code:${event.code.toLowerCase()}`);
+  // Some browsers/keyboards report only "Shift" in `key`; location identifies
+  // the physical side and keeps Right Shift bindings distinguishable.
+  if (event.key === "Shift" && event.location === 1) eventCodes.add("code:shiftleft");
+  if (event.key === "Shift" && event.location !== 1) eventCodes.add("code:shiftright");
   return getBindingKeys(bindings, action).some((binding) =>
-    binding.startsWith("code:") ? binding === eventCode : binding.toLowerCase() === eventKey
+    binding.startsWith("code:") ? eventCodes.has(binding) : binding.toLowerCase() === eventKey
   );
 }
 
