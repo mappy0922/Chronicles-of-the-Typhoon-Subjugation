@@ -28,8 +28,8 @@ const BATTLE_JUMP_LANDING_DURATION = 100;
 const BATTLE_AIR_LUNGE_GAP_PX = 32;
 const BATTLE_AIR_LUNGE_STEP_PERCENT = 2;
 const BATTLE_AIR_LUNGE_DECAY = 0.7;
-const BATTLE_TARGET_HIT_RANGE = 0.16;
-const BATTLE_FOOT_HIT_RANGE_PERCENT = 17;
+const BATTLE_TARGET_HIT_RANGE = 0.18;
+const BATTLE_FOOT_HIT_RANGE_PERCENT = 19;
 const BATTLE_ATTACK_FRAME_INTERVAL = 150;
 const BATTLE_ATTACK_MASH_WINDOW = 280;
 const SPECIAL_CHARGE_DURATION = 300_000;
@@ -517,34 +517,33 @@ export default function GameWorldScene() {
 
   useEffect(() => {
     if (!battleActive || !typhoonAppearance) {
+      bossFlippedRef.current = false;
       setBossFlipped(false);
       return;
     }
-    const battleBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
-    const bossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
-    const playerBounds = document.querySelector(".strike-player-position img")?.getBoundingClientRect();
-    if (!battleBounds || !bossBounds) return;
-    const playerX = battleBounds.left + (battlePlayerLeft / 100) * battleBounds.width;
-    const playerBackX = playerBounds
-      ? facing < 0 ? playerBounds.right : playerBounds.left
-      : playerX - facing * 60;
-    const bossBackSideInset = bossBounds.width * 0.08;
-    const handJumpMiss = battleJumpActiveRef.current
-      && battleJumpAttackFocusedRef.current
-      && ["hand-left", "hand-right", "hand"].includes(battleJumpAttackTargetRef.current)
-      && bossFlipped !== battleJumpAttackBossFlippedRef.current;
-    if (!bossFlipped && playerBackX > bossBounds.right - bossBackSideInset) {
-      if (handJumpMiss) {
-        battleJumpAttackConnectedRef.current = false;
+    let frameId;
+    const trackBossFacing = () => {
+      const battleBounds = document.querySelector(".strike-encounter")?.getBoundingClientRect();
+      const bossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
+      if (battleBounds && bossBounds) {
+        const playerX = battleBounds.left + (battlePlayerLeftRef.current / 100) * battleBounds.width;
+        const bossCenterX = bossBounds.left + bossBounds.width / 2;
+        const shouldFlip = playerX > bossCenterX;
+        if (shouldFlip !== bossFlippedRef.current) {
+          const handJumpMiss = battleJumpActiveRef.current
+            && battleJumpAttackFocusedRef.current
+            && ["hand-left", "hand-right", "hand"].includes(battleJumpAttackTargetRef.current)
+            && shouldFlip !== battleJumpAttackBossFlippedRef.current;
+          if (handJumpMiss) battleJumpAttackConnectedRef.current = false;
+          bossFlippedRef.current = shouldFlip;
+          setBossFlipped(shouldFlip);
+        }
       }
-      setBossFlipped(true);
-    } else if (bossFlipped && playerBackX < bossBounds.left + bossBackSideInset) {
-      if (handJumpMiss) {
-        battleJumpAttackConnectedRef.current = false;
-      }
-      setBossFlipped(false);
-    }
-  }, [battleActive, battlePlayerLeft, bossFlipped, bossHorizontalOffset, facing, typhoonAppearance]);
+      frameId = window.requestAnimationFrame(trackBossFacing);
+    };
+    frameId = window.requestAnimationFrame(trackBossFacing);
+    return () => window.cancelAnimationFrame(frameId);
+  }, [battleActive, typhoonAppearance]);
 
   useEffect(() => {
     if (!battleActive || !battleCommandsReady || !typhoonAppearance || bossDefeating || isPaused) {
@@ -946,14 +945,53 @@ export default function GameWorldScene() {
 
   const moveBattleFocus = (direction) => {
     if (bossDefeatedRef.current) return;
+    const moveDirection = direction === -1 ? "up" : direction === 1 ? "down" : direction;
     const handFocusIndex = FOCUS_TARGETS.findIndex((target) => target.id === "hand");
-    if (direction === "left" || direction === "right") {
-      if (focusTargetIndex === handFocusIndex) setHandSide((currentSide) => currentSide === "right" ? "left" : "right");
+    const bodyFocusIndex = FOCUS_TARGETS.findIndex((target) => target.id === "body");
+    const eyesFocusIndex = FOCUS_TARGETS.findIndex((target) => target.id === "eyes");
+    const headFocusIndex = FOCUS_TARGETS.findIndex((target) => target.id === "head");
+    const footFocusIndex = FOCUS_TARGETS.findIndex((target) => target.id === "foot");
+    const currentTargetId = FOCUS_TARGETS[focusTargetIndex]?.id || "head";
+    const selectHand = (side) => {
+      setFocusTargetIndex(handFocusIndex);
+      setHandSide(side);
+    };
+
+    if (currentTargetId === "eyes") {
+      if (moveDirection === "left") selectHand("left");
+      else if (moveDirection === "right") selectHand("right");
+      else if (moveDirection === "down") setFocusTargetIndex(bodyFocusIndex);
+      else if (moveDirection === "up") setFocusTargetIndex(headFocusIndex);
       return;
     }
-    const nextIndex = (focusTargetIndex + direction + FOCUS_TARGETS.length) % FOCUS_TARGETS.length;
-    setFocusTargetIndex(nextIndex);
-    if (nextIndex === handFocusIndex) setHandSide("right");
+
+    if (currentTargetId === "hand" || currentTargetId === "body") {
+      if (moveDirection === "down") {
+        setFocusTargetIndex(footFocusIndex);
+        return;
+      }
+      if (moveDirection === "up") {
+        setFocusTargetIndex(eyesFocusIndex);
+        return;
+      }
+      if (moveDirection === "left" || moveDirection === "right") {
+        const horizontalTargets = ["left", "body", "right"];
+        const currentIndex = currentTargetId === "body" ? 1 : handSide === "left" ? 0 : 2;
+        const step = moveDirection === "left" ? -1 : 1;
+        const nextTarget = horizontalTargets[(currentIndex + step + horizontalTargets.length) % horizontalTargets.length];
+        if (nextTarget === "body") setFocusTargetIndex(bodyFocusIndex);
+        else selectHand(nextTarget);
+      }
+      return;
+    }
+
+    if (currentTargetId === "head" && moveDirection === "down") {
+      setFocusTargetIndex(eyesFocusIndex);
+      return;
+    }
+    if (currentTargetId === "foot" && moveDirection === "up") {
+      setFocusTargetIndex(bodyFocusIndex);
+    }
   };
   battleFocusHandlerRef.current = moveBattleFocus;
 
