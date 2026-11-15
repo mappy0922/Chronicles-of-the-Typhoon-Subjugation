@@ -29,7 +29,7 @@ const BATTLE_AIR_LUNGE_GAP_PX = 32;
 const BATTLE_AIR_LUNGE_STEP_PERCENT = 2;
 const BATTLE_AIR_LUNGE_DECAY = 0.7;
 const BATTLE_TARGET_HIT_RANGE = 0.18;
-const BATTLE_FOOT_HIT_RANGE_PERCENT = 19;
+const BATTLE_FOOT_HIT_RANGE_PERCENT = 16;
 const BATTLE_ATTACK_FRAME_INTERVAL = 150;
 const BATTLE_ATTACK_MASH_WINDOW = 280;
 const SPECIAL_CHARGE_DURATION = 300_000;
@@ -1180,15 +1180,20 @@ export default function GameWorldScene() {
       const attackLeft = battleBounds && bossBounds
         ? ((bossBounds.left + (attackTarget.x / 100) * bossBounds.width - battleBounds.left) / battleBounds.width) * 100
         : BATTLE_JUMP_ATTACK_POSITION;
-      const focusedGroundAttack = battleGroundedRef.current && focusModeRef.current;
+      const focusedGroundAttack = battleGroundedRef.current && focusModeRef.current && attackTarget.id !== "foot";
       const playerCenterX = battleBounds
         ? battleBounds.left + (battlePlayerLeftRef.current / 100) * battleBounds.width
         : battlePlayerLeftRef.current;
       const overallBossRange = battleBounds ? battleBounds.width * (BATTLE_JUMP_TRIGGER_RANGE / 100) : 0;
       const withinBossRange = Boolean(bossBounds && playerCenterX >= bossBounds.left - overallBossRange && playerCenterX <= bossBounds.right + overallBossRange);
+      const footAttackInRange = battleBounds
+        && attackTarget.id === "foot"
+        && Math.abs(attackLeft - battlePlayerLeftRef.current) <= BATTLE_FOOT_HIT_RANGE_PERCENT;
       const outOfRange = focusedGroundAttack
         ? !withinBossRange
-        : Math.abs(attackLeft - battlePlayerLeftRef.current) > BATTLE_JUMP_TRIGGER_RANGE;
+        : attackTarget.id === "foot" && battleGroundedRef.current
+          ? !footAttackInRange
+          : Math.abs(attackLeft - battlePlayerLeftRef.current) > BATTLE_JUMP_TRIGGER_RANGE;
       if (outOfRange) {
         if (command === "fight") {
           window.clearInterval(bossHitTimeoutRef.current);
@@ -1217,7 +1222,12 @@ export default function GameWorldScene() {
         const playerX = currentBattleBounds.left + (battlePlayerLeftRef.current / 100) * currentBattleBounds.width;
         const playerY = currentPlayerBounds.top + currentPlayerBounds.height / 2;
         let hitTarget = null;
-        if (battleGroundedRef.current && focusModeRef.current) {
+        if (battleGroundedRef.current && focusModeRef.current && focusTarget.id === "foot") {
+          const footTarget = orientBossTarget(getAdjustedFocusTarget("foot", bossType, handSide), bossFlippedRef.current);
+          const footX = currentBossBounds.left + (footTarget.x / 100) * currentBossBounds.width;
+          const footRange = currentBattleBounds.width * (BATTLE_FOOT_HIT_RANGE_PERCENT / 100);
+          if (Math.abs(playerX - footX) <= footRange) hitTarget = footTarget;
+        } else if (battleGroundedRef.current && focusModeRef.current) {
           const overallRange = currentBattleBounds.width * (BATTLE_JUMP_TRIGGER_RANGE / 100);
           const insideOverallRange = playerX >= currentBossBounds.left - overallRange && playerX <= currentBossBounds.right + overallRange;
           if (insideOverallRange) {
@@ -1255,7 +1265,7 @@ export default function GameWorldScene() {
         battleFacingRef.current = hitFacing;
         setFacing(hitFacing);
         if (battleJumpActiveRef.current) setBattleJumpFlipped(hitFacing < 0);
-        else setBattleAttackFlipped(hitFacing < 0);
+        else setBattleAttackFlipped(hitFacing > 0);
 
         battleJumpAttackConnectedRef.current = true;
         const critical = Math.random() < 0.03;
