@@ -28,7 +28,6 @@ const BATTLE_JUMP_LANDING_DURATION = 100;
 const BATTLE_AIR_LUNGE_GAP_PX = 32;
 const BATTLE_AIR_LUNGE_STEP_PERCENT = 2;
 const BATTLE_AIR_LUNGE_DECAY = 0.7;
-const BATTLE_TARGET_HIT_RANGE = 0.18;
 const BATTLE_FOOT_HIT_RANGE_PERCENT = 16;
 const BATTLE_ATTACK_FRAME_INTERVAL = 150;
 const BATTLE_ATTACK_MASH_WINDOW = 280;
@@ -54,6 +53,29 @@ const FOCUS_MARK_OFFSETS = {
   complex: { eyes: { x: -10 }, rightHand: { y: -6 }, leftHand: { x: -6 } },
   shared: { eyes: { x: -2 }, leftHand: { x: -2 } }
 };
+const BOSS_PART_HITBOXES = {
+  breeze: { head: { x: 0.18, y: 0.15 }, eyes: { x: 0.14, y: 0.08 }, body: { x: 0.21, y: 0.2 }, hand: { x: 0.15, y: 0.14 }, foot: { x: 0.19, y: 0.1 } },
+  rain: { head: { x: 0.19, y: 0.15 }, eyes: { x: 0.14, y: 0.08 }, body: { x: 0.22, y: 0.2 }, hand: { x: 0.16, y: 0.14 }, foot: { x: 0.2, y: 0.1 } },
+  gale: { head: { x: 0.18, y: 0.14 }, eyes: { x: 0.13, y: 0.08 }, body: { x: 0.21, y: 0.19 }, hand: { x: 0.15, y: 0.13 }, foot: { x: 0.19, y: 0.09 } },
+  large: { head: { x: 0.2, y: 0.16 }, eyes: { x: 0.15, y: 0.09 }, body: { x: 0.23, y: 0.21 }, hand: { x: 0.17, y: 0.15 }, foot: { x: 0.21, y: 0.1 } },
+  complex: { head: { x: 0.2, y: 0.16 }, eyes: { x: 0.15, y: 0.09 }, body: { x: 0.24, y: 0.22 }, hand: { x: 0.18, y: 0.15 }, foot: { x: 0.22, y: 0.11 } }
+};
+const getBossPartHitbox = (typhoonType, targetId) => {
+  const partId = targetId.startsWith("hand-") || targetId === "hand" ? "hand" : targetId;
+  return BOSS_PART_HITBOXES[typhoonType]?.[partId] || BOSS_PART_HITBOXES.breeze.head;
+};
+const createSparkBurst = (direction = "right") => Array.from({ length: 96 }, () => {
+  const angle = direction === "left" ? Math.random() * 90 : 270 + Math.random() * 90;
+  return {
+    angle,
+    distance: 80 + Math.sqrt(Math.random()) * 140,
+    length: 9 + Math.random() * 19,
+    width: 1.1 + Math.random() * 1.6,
+    spin: (Math.random() - 0.5) * 12,
+    delay: Math.random() * 0.045,
+    duration: 0.28 + Math.random() * 0.24
+  };
+});
 const getAdjustedFocusTarget = (targetId, typhoonType, handSide = "right") => {
   const isHand = targetId.startsWith("hand-") || targetId === "hand";
   const selectedHandSide = targetId.startsWith("hand-") ? targetId.slice("hand-".length) : handSide;
@@ -432,7 +454,8 @@ export default function GameWorldScene() {
     const targetX = bossBounds.left + (target.x / 100) * bossBounds.width;
     const playerX = encounterBounds.left + (battlePlayerLeftRef.current / 100) * encounterBounds.width;
     const horizontalGap = targetX - playerX;
-    const attackRange = Math.max(BATTLE_AIR_LUNGE_GAP_PX, bossBounds.width * BATTLE_TARGET_HIT_RANGE);
+    const targetHitbox = getBossPartHitbox(bossType, targetId);
+    const attackRange = Math.max(BATTLE_AIR_LUNGE_GAP_PX, bossBounds.width * targetHitbox.x);
     if (Math.abs(horizontalGap) <= attackRange) return;
 
     const direction = battleFacingRef.current;
@@ -1110,12 +1133,12 @@ export default function GameWorldScene() {
     window.clearInterval(battleActionTimeoutRef.current);
     battleActionTimeoutRef.current = scheduleWhileUnpaused(() => setBattleAction(null), 220);
 
-    const dealBossDamage = (damage, critical, target) => {
+    const dealBossDamage = (damage, critical, target, sparkDirection) => {
       const currentGaugeProgress = Math.max(0, bossGaugeChargeRef.current - bossGaugeDamageRef.current);
       const currentBossHp = Math.round((bossMaxHp * currentGaugeProgress) / 100);
       if (target.id === "eyes" && currentBossHp > 0 && currentBossHp <= bossMaxHp / 2) {
         bossHitCounterRef.current += 1;
-        setBossHitEffect({ id: bossHitCounterRef.current, damage: 0, targetId: target.id, typhoonType: bossType, critical: false, blocked: true });
+        setBossHitEffect({ id: bossHitCounterRef.current, damage: 0, targetId: target.id, typhoonType: bossType, critical: false, blocked: true, sparks: createSparkBurst(sparkDirection) });
         window.clearInterval(bossHitTimeoutRef.current);
         bossHitTimeoutRef.current = scheduleWhileUnpaused(() => setBossHitEffect(null), 900);
         return;
@@ -1129,7 +1152,7 @@ export default function GameWorldScene() {
       const defeatsBoss = damage >= currentBossHp;
       setBossGaugeDamage((currentDamage) => Math.min(100, currentDamage + actualProgressDamage));
       bossHitCounterRef.current += 1;
-      setBossHitEffect({ id: bossHitCounterRef.current, damage: actualHpDamage, targetId: target.id, typhoonType: bossType, critical });
+      setBossHitEffect({ id: bossHitCounterRef.current, damage: actualHpDamage, targetId: target.id, typhoonType: bossType, critical, sparks: createSparkBurst(sparkDirection) });
       window.clearInterval(bossHitTimeoutRef.current);
       if (!defeatsBoss && !eyesBarrierActivatedRef.current && nextBossHp <= bossMaxHp / 2) {
         eyesBarrierActivatedRef.current = true;
@@ -1221,40 +1244,29 @@ export default function GameWorldScene() {
         }
         const playerX = currentBattleBounds.left + (battlePlayerLeftRef.current / 100) * currentBattleBounds.width;
         const playerY = currentPlayerBounds.top + currentPlayerBounds.height / 2;
-        let hitTarget = null;
-        if (battleGroundedRef.current && focusModeRef.current && focusTarget.id === "foot") {
-          const footTarget = orientBossTarget(getAdjustedFocusTarget("foot", bossType, handSide), bossFlippedRef.current);
-          const footX = currentBossBounds.left + (footTarget.x / 100) * currentBossBounds.width;
-          const footRange = currentBattleBounds.width * (BATTLE_FOOT_HIT_RANGE_PERCENT / 100);
-          if (Math.abs(playerX - footX) <= footRange) hitTarget = footTarget;
-        } else if (battleGroundedRef.current && focusModeRef.current) {
-          const overallRange = currentBattleBounds.width * (BATTLE_JUMP_TRIGGER_RANGE / 100);
-          const insideOverallRange = playerX >= currentBossBounds.left - overallRange && playerX <= currentBossBounds.right + overallRange;
-          if (insideOverallRange) {
-            hitTarget = orientBossTarget(getAdjustedFocusTarget(focusTarget.id, bossType, handSide), bossFlippedRef.current);
-          }
-        } else {
-          const currentTargets = [
+        const currentTargets = battleGroundedRef.current && focusModeRef.current
+          ? [orientBossTarget(getAdjustedFocusTarget(focusTarget.id, bossType, handSide), bossFlippedRef.current)]
+          : [
             ...FOCUS_TARGETS.filter((target) => target.id !== "hand").map((target) => orientBossTarget(getAdjustedFocusTarget(target.id, bossType, handSide), bossFlippedRef.current)),
             orientBossTarget(getAdjustedFocusTarget("hand-left", bossType, handSide), bossFlippedRef.current),
             orientBossTarget(getAdjustedFocusTarget("hand-right", bossType, handSide), bossFlippedRef.current)
           ];
-          const verticalHitRange = Math.max(36, currentBossBounds.height * BATTLE_TARGET_HIT_RANGE);
-          const inRangeTargets = currentTargets.map((target) => {
-            const isFootTarget = target.id === "foot";
-            if (isFootTarget && !battleGroundedRef.current) return null;
-            const targetX = currentBossBounds.left + (target.x / 100) * currentBossBounds.width;
-            const targetY = currentBossBounds.top + (target.y / 100) * currentBossBounds.height;
-            const deltaX = Math.abs(playerX - targetX);
-            const deltaY = Math.abs(playerY - targetY);
-            const horizontalHitRange = isFootTarget
-              ? currentBattleBounds.width * (BATTLE_FOOT_HIT_RANGE_PERCENT / 100)
-              : Math.max(36, currentBossBounds.width * BATTLE_TARGET_HIT_RANGE);
-            if (deltaX > horizontalHitRange || (!isFootTarget && deltaY > verticalHitRange)) return null;
-            return { target, score: deltaX / horizontalHitRange + (isFootTarget ? 0 : deltaY / verticalHitRange) };
-          }).filter(Boolean);
-          hitTarget = inRangeTargets.reduce((nearest, candidate) => !nearest || candidate.score < nearest.score ? candidate : nearest, null)?.target;
-        }
+        const inRangeTargets = currentTargets.map((target) => {
+          const isFootTarget = target.id === "foot";
+          if (isFootTarget && !battleGroundedRef.current) return null;
+          const hitbox = getBossPartHitbox(bossType, target.id);
+          const targetX = currentBossBounds.left + (target.x / 100) * currentBossBounds.width;
+          const targetY = currentBossBounds.top + (target.y / 100) * currentBossBounds.height;
+          const deltaX = Math.abs(playerX - targetX);
+          const deltaY = Math.abs(playerY - targetY);
+          const horizontalHitRange = isFootTarget
+            ? currentBattleBounds.width * (BATTLE_FOOT_HIT_RANGE_PERCENT / 100)
+            : Math.max(36, currentBossBounds.width * hitbox.x);
+          const verticalHitRange = Math.max(30, currentBossBounds.height * hitbox.y);
+          if (deltaX > horizontalHitRange || (!isFootTarget && deltaY > verticalHitRange)) return null;
+          return { target, score: deltaX / horizontalHitRange + (isFootTarget ? 0 : deltaY / verticalHitRange) };
+        }).filter(Boolean);
+        const hitTarget = inRangeTargets.reduce((nearest, candidate) => !nearest || candidate.score < nearest.score ? candidate : nearest, null)?.target;
         if (!hitTarget) {
           battleJumpAttackConnectedRef.current = false;
           return;
@@ -1270,7 +1282,7 @@ export default function GameWorldScene() {
         battleJumpAttackConnectedRef.current = true;
         const critical = Math.random() < 0.03;
         const finalDamage = baseDamage * (hitTarget.id === "eyes" ? 2 : 1) * (critical ? 3 : 1);
-        dealBossDamage(finalDamage, critical, hitTarget);
+        dealBossDamage(finalDamage, critical, hitTarget, hitFacing > 0 ? "right" : "left");
       };
       const mashAttack = command === "fight" && attackTarget.id === "foot";
       if (mashAttack) startGroundedFootAttack(attackFacing > 0);
@@ -1888,7 +1900,7 @@ export default function GameWorldScene() {
                   className="boss-hit-sparks"
                   style={{ left: `${damageTarget.x}%`, top: `${damageTarget.y}%` }}
                   aria-hidden="true"
-                >{Array.from({ length: 16 }, (_, index) => <i key={index} style={{ "--spark-angle": `${index * 22.5 + (index % 2) * 7}deg`, "--spark-distance": `${-90 - (index % 4) * 20}px`, "--spark-length": `${7 + (index % 3) * 4}px`, "--spark-delay": `${(index % 3) * 0.015}s` }} />)}</span>}
+                >{bossHitEffect.sparks?.map((spark, index) => <i key={index} style={{ "--spark-angle": `${spark.angle}deg`, "--spark-distance": `${spark.distance}px`, "--spark-mid-distance": `${spark.distance * 0.58}px`, "--spark-length": `${spark.length}px`, "--spark-width": `${spark.width}px`, "--spark-spin": `${spark.spin}deg`, "--spark-delay": `${spark.delay}s`, "--spark-duration": `${spark.duration}s` }} />)}</span>}
               </div>
               {battleCommandsReady && focusModifierHeld && !bossDefeating && <span
                 className={`boss-focus-marker ${focusTarget.id === "eyes" ? "is-eye" : ""}`}
