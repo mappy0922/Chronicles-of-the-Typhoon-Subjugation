@@ -364,6 +364,8 @@ export default function GameWorldScene() {
   const [battleAttackFrame, setBattleAttackFrame] = useState(null);
   const [battleJumpAttackFrame, setBattleJumpAttackFrame] = useState(null);
   const [battleAttackFlipped, setBattleAttackFlipped] = useState(false);
+  const [battleJumpSlashUpstroke, setBattleJumpSlashUpstroke] = useState(false);
+  const [battleGroundSlashUpstroke, setBattleGroundSlashUpstroke] = useState(false);
   const [moving, setMoving] = useState(false);
   const [facing, setFacing] = useState(1);
   const [fastWalking, setFastWalking] = useState(false);
@@ -426,13 +428,24 @@ export default function GameWorldScene() {
   const battleAttackMashRemainingRef = useRef(0);
   const battleAttackHasRepeatedRef = useRef(false);
   const battleAttackFrameIndexRef = useRef(0);
+  const battleJumpPreviousSlashFrameRef = useRef(null);
+  const battleGroundPreviousSlashFrameRef = useRef(null);
   const battleFootAttackTimerActiveRef = useRef(false);
   const battleJumpUsesMashAttackRef = useRef(false);
   const battleJumpGroundTopRef = useRef(null);
   const finishBattleJumpRef = useRef(null);
   const stopGroundedFootAttackRef = useRef(null);
   const battleGroundedRef = useRef(true);
+  const changeGroundAttackFrame = (frame) => {
+    const previous = battleGroundPreviousSlashFrameRef.current;
+    setBattleGroundSlashUpstroke((frame === 2 && previous === 3) || (frame === 1 && previous === 2));
+    battleGroundPreviousSlashFrameRef.current = frame;
+    setBattleAttackFrame(frame);
+  };
   const changeJumpAttackFrame = (frame) => {
+    const previous = battleJumpPreviousSlashFrameRef.current;
+    setBattleJumpSlashUpstroke(frame === 2 && previous === 3);
+    battleJumpPreviousSlashFrameRef.current = frame === 2 || frame === 3 ? frame : null;
     setBattleJumpAttackFrame(frame);
     if (frame === 2) {
       lungeTowardBossForAirSwing();
@@ -469,6 +482,8 @@ export default function GameWorldScene() {
   };
   const resetJumpAttackFrames = () => {
     setBattleJumpAttackFrame(null);
+    setBattleJumpSlashUpstroke(false);
+    battleJumpPreviousSlashFrameRef.current = null;
   };
   const transitionRef = useRef("idle");
   const lastMapTransitionWasTyphoonRef = useRef(false);
@@ -728,7 +743,9 @@ export default function GameWorldScene() {
     battleAttackHasRepeatedRef.current = false;
     battleAttackMashRemainingRef.current = 0;
     battleFootAttackTimerActiveRef.current = true;
-    setBattleAttackFrame(1);
+    battleGroundPreviousSlashFrameRef.current = null;
+    setBattleGroundSlashUpstroke(false);
+    changeGroundAttackFrame(1);
     battleAttackFrameTimerRef.current = window.setInterval(() => {
       if (pausedRef.current || battleAttackPhaseRef.current !== "attack") return;
       const currentFrameIndex = battleAttackFrameIndexRef.current;
@@ -741,12 +758,14 @@ export default function GameWorldScene() {
         battleAttackHasRepeatedRef.current = false;
         battleFootAttackTimerActiveRef.current = false;
         setBattleAttackFrame(null);
+        setBattleGroundSlashUpstroke(false);
+        battleGroundPreviousSlashFrameRef.current = null;
         setBattleAttackFlipped(false);
         return;
       }
       const attackFrames = [1, 2, 3, 2, 1, 2];
       battleAttackFrameIndexRef.current = (currentFrameIndex + 1) % attackFrames.length;
-      setBattleAttackFrame(attackFrames[battleAttackFrameIndexRef.current]);
+      changeGroundAttackFrame(attackFrames[battleAttackFrameIndexRef.current]);
       if (stillMashing) battleAttackMashRemainingRef.current = Math.max(0, battleAttackMashRemainingRef.current - BATTLE_ATTACK_FRAME_INTERVAL);
     }, BATTLE_ATTACK_FRAME_INTERVAL);
   };
@@ -760,6 +779,8 @@ export default function GameWorldScene() {
     battleAttackMashRemainingRef.current = 0;
     battleFootAttackTimerActiveRef.current = false;
     setBattleAttackFrame(null);
+    setBattleGroundSlashUpstroke(false);
+    battleGroundPreviousSlashFrameRef.current = null;
     setBattleAttackFlipped(false);
   };
 
@@ -1068,6 +1089,8 @@ export default function GameWorldScene() {
     battleJumpGroundTopRef.current = groundTop;
     setBattleJumpActive(true);
     setBattleAttackFrame(null);
+    setBattleGroundSlashUpstroke(false);
+    battleGroundPreviousSlashFrameRef.current = null;
     resetJumpAttackFrames();
     setBattleJumpFlipped(attackSide > 0);
     setBattleJumpTargetTop(attackTop);
@@ -1816,6 +1839,47 @@ export default function GameWorldScene() {
     ...(battleAttackFrame ? { "--attack-baseline-offset": { 1: "1.5%", 2: "3.4%", 3: "-0.9%" }[battleAttackFrame] } : {}),
     ...(battleJumpAttackFrame === 2 ? { "--jump-attack-baseline-offset": "8px" } : {})
   };
+  const isGroundSwordSlash = Boolean(battleAttackFrame);
+  const isAirSwordSlash = battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3;
+  const slashFrame = isGroundSwordSlash ? battleAttackFrame : battleJumpAttackFrame;
+  const slashFlipped = isGroundSwordSlash ? battleAttackFlipped : battleJumpFlipped;
+  const slashUpstroke = isGroundSwordSlash ? battleGroundSlashUpstroke : battleJumpSlashUpstroke;
+  const slashTipOffsetY = isGroundSwordSlash
+    ? ({ 1: 0, 2: 380, 3: 840 }[battleAttackFrame] || 0)
+    : battleJumpAttackFrame === 3 ? (isMale ? 630 : 495) : 0;
+  const slashTipOffsetX = isGroundSwordSlash
+    ? ({ 1: 0, 2: -16, 3: 44 }[battleAttackFrame] || 0)
+    : battleJumpAttackFrame === 3 && isMale ? -95 : 0;
+  const slashTipX = isGroundSwordSlash ? ({ 1: 16, 2: 0, 3: 60 }[battleAttackFrame] || 16)
+    : battleJumpAttackFrame === 3 ? (isMale ? 900 : 980) : (isMale ? 995 : 978);
+  const slashTipY = isGroundSwordSlash ? ({ 1: 320, 2: 700, 3: 1160 }[battleAttackFrame] || 320)
+    : battleJumpAttackFrame === 3 ? (isMale ? 1190 : 1180) : (isMale ? 560 : 685);
+  const renderedSlashTipX = slashFlipped ? 1000 - slashTipX : slashTipX;
+  const slashSparkLeft = isGroundSwordSlash
+    ? `${(6.8 + renderedSlashTipX * 0.0864).toFixed(1)}%`
+    : `${(8.6 + renderedSlashTipX * 0.0827).toFixed(1)}%`;
+  const slashSparkTop = isGroundSwordSlash
+    ? `calc(-50% + ${slashTipY * 0.1}%)`
+    : `calc(-20% + ${slashTipY * 0.08}%)`;
+  const slashFlipOriginY = isGroundSwordSlash
+    ? `${slashTipY / 15}%`
+    : `${slashTipY / 15}%`;
+  const swordSlashPaths = Array.from({ length: 20 }, (_, index) => {
+    const spread = (index - 9.5) * 4;
+    const startX = isGroundSwordSlash ? 16 : isMale ? 995 : 978;
+    const startY = isGroundSwordSlash ? 320 : isMale ? 560 : 685;
+    const controlOneX = isGroundSwordSlash ? -185 + spread * 2.1 : (isMale ? 1120 : 1110) + spread * 3;
+    const controlOneY = isGroundSwordSlash ? 510 + spread * 0.2 : (isMale ? 610 : 760) + spread * 0.18;
+    const controlTwoX = isGroundSwordSlash ? -160 + spread * 2.1 : (isMale ? 1080 : 1070) + spread * 3;
+    const controlTwoY = isGroundSwordSlash ? 1040 + spread * 0.2 : (isMale ? 1180 : 1200) + spread * 0.24;
+    const endX = isGroundSwordSlash ? 80 + spread * 1.6 : (isMale ? 820 : 900) + spread * 2;
+    const endY = isGroundSwordSlash ? 1390 + spread * 0.12 : (isMale ? 1410 : 1380) + spread * 0.12;
+    return {
+      d: `M ${startX} ${startY} C ${controlOneX} ${controlOneY} ${controlTwoX} ${controlTwoY} ${endX} ${endY}`,
+      width: 3.4 + (1 - Math.abs(index - 9.5) / 10) * 5.4,
+      delay: (index % 4) * 0.006
+    };
+  });
 
   return (
     <section className={`game-world ${isStrike ? "is-strike" : ""} ${battleActive ? "is-battle-active" : ""} ${isTyphoonTransition ? "is-typhoon-transition" : ""}`} style={{ "--storm-darkness": skyDarkness, "--night-opacity": nightIntensity, "--celestial-opacity": 1 - celestialFade }} aria-label="\u8349\u539F\u306E\u30B2\u30FC\u30E0\u30D5\u30A3\u30FC\u30EB\u30C9">
@@ -1866,6 +1930,32 @@ export default function GameWorldScene() {
             aria-hidden="true"
             style={battlePlayerSpriteStyle}
           />
+          {bossHitEffect?.sparks?.length > 0 && (isAirSwordSlash || isGroundSwordSlash) && <span
+            key={`slash-sparks-${bossHitEffect.id}`}
+            className="boss-hit-sparks slash-hit-sparks"
+            style={{ left: slashSparkLeft, top: slashSparkTop }}
+            aria-hidden="true"
+          >{bossHitEffect.sparks.map((spark, index) => <i key={index} style={{ "--spark-angle": `${spark.angle}deg`, "--spark-distance": `${spark.distance}px`, "--spark-mid-distance": `${spark.distance * 0.58}px`, "--spark-length": `${spark.length}px`, "--spark-width": `${spark.width}px`, "--spark-spin": `${spark.spin}deg`, "--spark-delay": `${spark.delay}s`, "--spark-duration": `${spark.duration}s` }} />)}</span>}
+          {(isAirSwordSlash || isGroundSwordSlash) && <svg
+            key={`battle-sword-slash-${isGroundSwordSlash ? "ground" : "air"}-${slashFrame}-${slashFlipped}-${slashUpstroke}`}
+            className={`battle-sword-slash ${isGroundSwordSlash ? `is-ground-slash ${!isMale ? "is-female-ground-slash" : ""}` : ""} is-frame-${slashFrame} ${slashFlipped ? "is-flipped" : ""} ${slashUpstroke ? "is-upstroke" : ""}`}
+            style={{
+              "--slash-baseline-offset": isGroundSwordSlash
+                ? `calc(${{ 1: "1.5%", 2: "3.4%", 3: "-0.9%" }[battleAttackFrame]} + 20px)`
+                : `${isMale ? (battleJumpAttackFrame === 2 ? 28 : 20) : (battleJumpAttackFrame === 2 ? 12 : 4)}px`,
+              "--slash-flip-origin-y": slashFlipOriginY
+            }}
+            viewBox="0 0 1000 1500"
+            aria-hidden="true"
+          >
+            <g transform={`translate(${slashTipOffsetX} ${slashTipOffsetY})`}>{swordSlashPaths.map((path, index) => <path
+              key={index}
+              className="sword-slash-trail"
+              pathLength="1"
+              d={path.d}
+              style={{ "--slash-width": `${path.width}px`, "--slash-delay": `${path.delay}s` }}
+            />)}</g>
+          </svg>}
         </div>
         <div
           key={typhoonAppearance.src}
@@ -1895,12 +1985,6 @@ export default function GameWorldScene() {
               <div key={`boss-hit-${bossHitEffect?.id || "idle"}`} className={`typhoon-boss-content ${bossHitEffect && !bossHitEffect.blocked ? "is-hit" : ""}`}>
               <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className={`typhoon-strike-character ${bossFlipped ? "is-flipped" : ""}`} />
               <img src={typhoonAppearance.src} alt="" aria-hidden="true" className={`edge-shade-overlay typhoon-strike-character ${bossFlipped ? "is-flipped" : ""}`} />
-                {bossHitEffect && <span
-                  key={`boss-sparks-${bossHitEffect.id}`}
-                  className="boss-hit-sparks"
-                  style={{ left: `${damageTarget.x}%`, top: `${damageTarget.y}%` }}
-                  aria-hidden="true"
-                >{bossHitEffect.sparks?.map((spark, index) => <i key={index} style={{ "--spark-angle": `${spark.angle}deg`, "--spark-distance": `${spark.distance}px`, "--spark-mid-distance": `${spark.distance * 0.58}px`, "--spark-length": `${spark.length}px`, "--spark-width": `${spark.width}px`, "--spark-spin": `${spark.spin}deg`, "--spark-delay": `${spark.delay}s`, "--spark-duration": `${spark.duration}s` }} />)}</span>}
               </div>
               {battleCommandsReady && focusModifierHeld && !bossDefeating && <span
                 className={`boss-focus-marker ${focusTarget.id === "eyes" ? "is-eye" : ""}`}
