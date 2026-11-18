@@ -29,7 +29,7 @@ const BATTLE_AIR_LUNGE_GAP_PX = 32;
 const BATTLE_AIR_LUNGE_STEP_PERCENT = 2;
 const BATTLE_AIR_LUNGE_DECAY = 0.7;
 const BATTLE_FOOT_HIT_RANGE_PERCENT = 16;
-const BATTLE_ATTACK_FRAME_INTERVAL = 150;
+const BATTLE_ATTACK_FRAME_INTERVAL = 220;
 const BATTLE_ATTACK_MASH_WINDOW = 280;
 const SPECIAL_CHARGE_DURATION = 300_000;
 const FOCUS_TARGETS = [
@@ -64,16 +64,16 @@ const getBossPartHitbox = (typhoonType, targetId) => {
   const partId = targetId.startsWith("hand-") || targetId === "hand" ? "hand" : targetId;
   return BOSS_PART_HITBOXES[typhoonType]?.[partId] || BOSS_PART_HITBOXES.breeze.head;
 };
-const createSparkBurst = (direction = "right") => Array.from({ length: 96 }, () => {
-  const angle = direction === "left" ? Math.random() * 90 : 270 + Math.random() * 90;
+const createSparkBurst = (targetSide = "right") => Array.from({ length: 15 }, () => {
+  const angle = targetSide === "right" ? 180 + Math.random() * 180 : Math.random() * 180;
   return {
     angle,
-    distance: 80 + Math.sqrt(Math.random()) * 140,
-    length: 9 + Math.random() * 19,
+    distance: 40 + Math.sqrt(Math.random()) * 80,
+    length: 12 + Math.random() * 22,
     width: 1.1 + Math.random() * 1.6,
     spin: (Math.random() - 0.5) * 12,
-    delay: Math.random() * 0.045,
-    duration: 0.28 + Math.random() * 0.24
+    delay: 0,
+    duration: 0.5 + Math.random() * 0.7
   };
 });
 const getAdjustedFocusTarget = (targetId, typhoonType, handSide = "right") => {
@@ -366,6 +366,8 @@ export default function GameWorldScene() {
   const [battleAttackFlipped, setBattleAttackFlipped] = useState(false);
   const [battleJumpSlashUpstroke, setBattleJumpSlashUpstroke] = useState(false);
   const [battleGroundSlashUpstroke, setBattleGroundSlashUpstroke] = useState(false);
+  const [battleSlashAnchor, setBattleSlashAnchor] = useState(null);
+  const [slashTrailInstances, setSlashTrailInstances] = useState([]);
   const [moving, setMoving] = useState(false);
   const [facing, setFacing] = useState(1);
   const [fastWalking, setFastWalking] = useState(false);
@@ -394,6 +396,7 @@ export default function GameWorldScene() {
   const [specialChargeProgress, setSpecialChargeProgress] = useState(0);
   const [specialChargeCycle, setSpecialChargeCycle] = useState(0);
   const [bossHitEffect, setBossHitEffect] = useState(null);
+  const [sparkBursts, setSparkBursts] = useState([]);
   const [bossDefeating, setBossDefeating] = useState(false);
   const [bossFullyDefeated, setBossFullyDefeated] = useState(false);
   const [victoryReward, setVictoryReward] = useState(null);
@@ -479,6 +482,7 @@ export default function GameWorldScene() {
     battleAirLungeCountRef.current += 1;
     battlePlayerLeftRef.current = nextLeft;
     setBattlePlayerLeft(nextLeft);
+    setBattleSlashAnchor((current) => current?.jumping ? { ...current, left: nextLeft } : current);
   };
   const resetJumpAttackFrames = () => {
     setBattleJumpAttackFrame(null);
@@ -491,6 +495,7 @@ export default function GameWorldScene() {
   const movementLockedRef = useRef(false);
   const nightIntensityRef = useRef(0);
   const transitionTimers = useRef([]);
+  const slashTrailIdRef = useRef(0);
   const movementInterval = useRef(null);
   const shiftHeld = useRef(false);
   const focusModeRef = useRef(false);
@@ -659,6 +664,8 @@ export default function GameWorldScene() {
       setBossDefeating(false);
       setBossFullyDefeated(false);
       setBossHitEffect(null);
+      setSparkBursts([]);
+      setSlashTrailInstances([]);
       setShowBossGauge(false);
       setBossGaugeCharging(false);
       setTyphoonAppearance(null);
@@ -706,6 +713,8 @@ export default function GameWorldScene() {
     battleJumpAttackHasRepeatedRef.current = false;
     battleJumpAttackMashRemainingRef.current = 0;
     battleAttackHasRepeatedRef.current = false;
+    setBattleSlashAnchor(null);
+    setSlashTrailInstances([]);
     setBattleAttackFrame(null);
     resetJumpAttackFrames();
     setBattleJumpTargetTop(battleJumpGroundTopRef.current);
@@ -733,8 +742,13 @@ export default function GameWorldScene() {
     if (battleAttackPhaseRef.current === "attack" && battleFootAttackTimerActiveRef.current) {
       battleAttackHasRepeatedRef.current = true;
       battleAttackMashRemainingRef.current = BATTLE_ATTACK_MASH_WINDOW;
+      setBattleSlashAnchor((current) => current && !current.jumping
+        ? { ...current, left: battlePlayerLeftRef.current, flipped }
+        : current);
       return;
     }
+
+    setBattleSlashAnchor({ left: battlePlayerLeftRef.current, top: null, jumping: false, flipped, baseline: "calc(1.5% + 20px)" });
 
     window.clearInterval(battleAttackFrameTimerRef.current);
     battleAttackFrameIndexRef.current = 0;
@@ -761,6 +775,7 @@ export default function GameWorldScene() {
         setBattleGroundSlashUpstroke(false);
         battleGroundPreviousSlashFrameRef.current = null;
         setBattleAttackFlipped(false);
+        setBattleSlashAnchor(null);
         return;
       }
       const attackFrames = [1, 2, 3, 2, 1, 2];
@@ -782,6 +797,7 @@ export default function GameWorldScene() {
     setBattleGroundSlashUpstroke(false);
     battleGroundPreviousSlashFrameRef.current = null;
     setBattleAttackFlipped(false);
+    setBattleSlashAnchor(null);
   };
 
   useEffect(() => {
@@ -857,6 +873,7 @@ export default function GameWorldScene() {
     window.clearInterval(battleActionTimeoutRef.current);
     window.clearInterval(bossHitTimeoutRef.current);
     setBossHitEffect(null);
+    setSparkBursts([]);
     transitionRef.current = "fade-out";
     setMapTransition("fade-out");
     transitionTimers.current.push(scheduleWhileUnpaused(() => {
@@ -1107,6 +1124,13 @@ export default function GameWorldScene() {
     const impactTimer = scheduleWhileUnpaused(() => {
       transitionTimers.current = transitionTimers.current.filter((timer) => timer !== impactTimer);
       battleAttackPhaseRef.current = "attack";
+      setBattleSlashAnchor({
+        left: battlePlayerLeftRef.current,
+        top: attackTop,
+        jumping: true,
+        flipped: attackSide > 0,
+        baseline: `${isMale ? 28 : 12}px`
+      });
       if (battleJumpAttackHasRepeatedRef.current) {
         battleJumpAttackMashRemainingRef.current = BATTLE_ATTACK_MASH_WINDOW;
       }
@@ -1156,14 +1180,61 @@ export default function GameWorldScene() {
     window.clearInterval(battleActionTimeoutRef.current);
     battleActionTimeoutRef.current = scheduleWhileUnpaused(() => setBattleAction(null), 220);
 
-    const dealBossDamage = (damage, critical, target, sparkDirection) => {
+    const createPersistentSparkBurst = (id, target, targetSide) => {
+      let sparkX = target.x;
+      let sparkY = target.y;
+      try {
+        const bossBounds = document.querySelector(".typhoon-boss-art")?.getBoundingClientRect();
+        const slashSvgs = document.querySelectorAll(".battle-sword-slash");
+        const latestSlash = slashSvgs[slashSvgs.length - 1];
+        const slashPaths = Array.from(latestSlash?.querySelectorAll("path") || []).filter((_, index) => index % 5 === 2);
+        if (bossBounds?.width && bossBounds.height && slashPaths.length) {
+            const impactX = bossBounds.left + (target.x / 100) * bossBounds.width;
+            const impactY = bossBounds.top + (target.y / 100) * bossBounds.height;
+            let closestPoint = null;
+            let closestDistance = Infinity;
+            slashPaths.forEach((path) => {
+              const matrix = path.getScreenCTM();
+              if (!matrix) return;
+              const length = path.getTotalLength();
+              for (let step = 0; step <= 24; step += 1) {
+                const pathPoint = path.getPointAtLength((length * step) / 24);
+                const svgPoint = path.ownerSVGElement.createSVGPoint();
+                svgPoint.x = pathPoint.x;
+                svgPoint.y = pathPoint.y;
+                const point = svgPoint.matrixTransform(matrix);
+                const distance = (point.x - impactX) ** 2 + (point.y - impactY) ** 2;
+                if (distance < closestDistance) {
+                  closestDistance = distance;
+                  closestPoint = point;
+                }
+              }
+            });
+            if (closestPoint) {
+              sparkX = ((closestPoint.x - bossBounds.left) / bossBounds.width) * 100;
+              sparkY = ((closestPoint.y - bossBounds.top) / bossBounds.height) * 100;
+            }
+        }
+      } catch {
+        // Spark placement must never interrupt attack damage processing.
+      }
+      setSparkBursts((current) => [...current, { id, x: sparkX, y: sparkY, sparks: createSparkBurst(targetSide) }]);
+      const cleanupTimer = scheduleWhileUnpaused(() => {
+        transitionTimers.current = transitionTimers.current.filter((timer) => timer !== cleanupTimer);
+        setSparkBursts((current) => current.filter((burst) => burst.id !== id));
+      }, 1250);
+      transitionTimers.current.push(cleanupTimer);
+    };
+
+    const dealBossDamage = (damage, critical, target, targetSide) => {
       const currentGaugeProgress = Math.max(0, bossGaugeChargeRef.current - bossGaugeDamageRef.current);
       const currentBossHp = Math.round((bossMaxHp * currentGaugeProgress) / 100);
       if (target.id === "eyes" && currentBossHp > 0 && currentBossHp <= bossMaxHp / 2) {
         bossHitCounterRef.current += 1;
-        setBossHitEffect({ id: bossHitCounterRef.current, damage: 0, targetId: target.id, typhoonType: bossType, critical: false, blocked: true, sparks: createSparkBurst(sparkDirection) });
+        createPersistentSparkBurst(bossHitCounterRef.current, target, targetSide);
+        setBossHitEffect({ id: bossHitCounterRef.current, damage: 0, targetId: target.id, typhoonType: bossType, critical: false, blocked: true });
         window.clearInterval(bossHitTimeoutRef.current);
-        bossHitTimeoutRef.current = scheduleWhileUnpaused(() => setBossHitEffect(null), 900);
+        bossHitTimeoutRef.current = scheduleWhileUnpaused(() => setBossHitEffect(null), 1300);
         return;
       }
       const damageAsGaugePercent = (damage / bossMaxHp) * 100;
@@ -1175,7 +1246,8 @@ export default function GameWorldScene() {
       const defeatsBoss = damage >= currentBossHp;
       setBossGaugeDamage((currentDamage) => Math.min(100, currentDamage + actualProgressDamage));
       bossHitCounterRef.current += 1;
-      setBossHitEffect({ id: bossHitCounterRef.current, damage: actualHpDamage, targetId: target.id, typhoonType: bossType, critical, sparks: createSparkBurst(sparkDirection) });
+      createPersistentSparkBurst(bossHitCounterRef.current, target, targetSide);
+      setBossHitEffect({ id: bossHitCounterRef.current, damage: actualHpDamage, targetId: target.id, typhoonType: bossType, critical });
       window.clearInterval(bossHitTimeoutRef.current);
       if (!defeatsBoss && !eyesBarrierActivatedRef.current && nextBossHp <= bossMaxHp / 2) {
         eyesBarrierActivatedRef.current = true;
@@ -1194,7 +1266,7 @@ export default function GameWorldScene() {
         finishBattleJumpRef.current?.();
         stopGroundedFootAttackRef.current?.();
       } else {
-        bossHitTimeoutRef.current = scheduleWhileUnpaused(() => setBossHitEffect(null), 900);
+        bossHitTimeoutRef.current = scheduleWhileUnpaused(() => setBossHitEffect(null), 1300);
       }
     };
 
@@ -1299,8 +1371,19 @@ export default function GameWorldScene() {
         const hitFacing = hitTargetX >= playerX ? 1 : -1;
         battleFacingRef.current = hitFacing;
         setFacing(hitFacing);
-        if (battleJumpActiveRef.current) setBattleJumpFlipped(hitFacing < 0);
-        else setBattleAttackFlipped(hitFacing > 0);
+        if (battleJumpActiveRef.current) {
+          const flipped = hitFacing < 0;
+          setBattleJumpFlipped(flipped);
+          setBattleSlashAnchor((current) => current?.jumping
+            ? { ...current, left: battlePlayerLeftRef.current, flipped }
+            : current);
+        } else {
+          const flipped = hitFacing > 0;
+          setBattleAttackFlipped(flipped);
+          setBattleSlashAnchor((current) => current && !current.jumping
+            ? { ...current, left: battlePlayerLeftRef.current, flipped }
+            : current);
+        }
 
         battleJumpAttackConnectedRef.current = true;
         const critical = Math.random() < 0.03;
@@ -1777,6 +1860,7 @@ export default function GameWorldScene() {
     addMoney(moneyReward);
     setBossDefeating(false);
     setBossHitEffect(null);
+    setSparkBursts([]);
     setShowBossGauge(false);
     setBossGaugeCharging(false);
     setBossFullyDefeated(true);
@@ -1842,44 +1926,117 @@ export default function GameWorldScene() {
   const isGroundSwordSlash = Boolean(battleAttackFrame);
   const isAirSwordSlash = battleJumpAttackFrame === 2 || battleJumpAttackFrame === 3;
   const slashFrame = isGroundSwordSlash ? battleAttackFrame : battleJumpAttackFrame;
-  const slashFlipped = isGroundSwordSlash ? battleAttackFlipped : battleJumpFlipped;
+  const slashFlipped = battleSlashAnchor?.flipped ?? (isGroundSwordSlash ? battleAttackFlipped : battleJumpFlipped);
   const slashUpstroke = isGroundSwordSlash ? battleGroundSlashUpstroke : battleJumpSlashUpstroke;
-  const slashTipOffsetY = isGroundSwordSlash
-    ? ({ 1: 0, 2: 380, 3: 840 }[battleAttackFrame] || 0)
-    : battleJumpAttackFrame === 3 ? (isMale ? 630 : 495) : 0;
-  const slashTipOffsetX = isGroundSwordSlash
-    ? ({ 1: 0, 2: -16, 3: 44 }[battleAttackFrame] || 0)
-    : battleJumpAttackFrame === 3 && isMale ? -95 : 0;
-  const slashTipX = isGroundSwordSlash ? ({ 1: 16, 2: 0, 3: 60 }[battleAttackFrame] || 16)
-    : battleJumpAttackFrame === 3 ? (isMale ? 900 : 980) : (isMale ? 995 : 978);
-  const slashTipY = isGroundSwordSlash ? ({ 1: 320, 2: 700, 3: 1160 }[battleAttackFrame] || 320)
-    : battleJumpAttackFrame === 3 ? (isMale ? 1190 : 1180) : (isMale ? 560 : 685);
-  const renderedSlashTipX = slashFlipped ? 1000 - slashTipX : slashTipX;
-  const slashSparkLeft = isGroundSwordSlash
-    ? `${(6.8 + renderedSlashTipX * 0.0864).toFixed(1)}%`
-    : `${(8.6 + renderedSlashTipX * 0.0827).toFixed(1)}%`;
-  const slashSparkTop = isGroundSwordSlash
-    ? `calc(-50% + ${slashTipY * 0.1}%)`
-    : `calc(-20% + ${slashTipY * 0.08}%)`;
-  const slashFlipOriginY = isGroundSwordSlash
-    ? `${slashTipY / 15}%`
-    : `${slashTipY / 15}%`;
-  const swordSlashPaths = Array.from({ length: 20 }, (_, index) => {
-    const spread = (index - 9.5) * 4;
+  const slashDownstrokeOffset = isGroundSwordSlash
+    ? { x: 8 - 16, y: 0 }
+    : isMale ? { x: 1000 - 995, y: 450 - 560 } : { x: 1000 - 978, y: 450 - 685 };
+  const slashTowardPlayerOffsetX = isGroundSwordSlash ? 160 : -160;
+  const slashUpstrokeOffset = isGroundSwordSlash
+    ? { x: 60 - (16 + (80 - 16) * 1.25), y: 1160 - (320 + (1390 - 320) * 1.25) }
+    : isMale
+      ? { x: 886 - (995 + (820 - 995) * 1.91), y: 1440 - (560 + (1410 - 560) * 1.91) }
+      : { x: 984 - (978 + (900 - 978) * 2.13), y: 1432 - (685 + (1380 - 685) * 2.13) };
+  const activeSlashBaseline = slashUpstroke
+    ? isGroundSwordSlash ? "calc(-0.9% + 20px)" : `${isMale ? 20 : 4}px`
+    : battleSlashAnchor?.baseline || "20px";
+  const swordSlashPaths = Array.from({ length: 25 }, (_, index) => {
+    const bundleIndex = Math.floor(index / 5);
+    const strandIndex = index % 5;
     const startX = isGroundSwordSlash ? 16 : isMale ? 995 : 978;
     const startY = isGroundSwordSlash ? 320 : isMale ? 560 : 685;
-    const controlOneX = isGroundSwordSlash ? -185 + spread * 2.1 : (isMale ? 1120 : 1110) + spread * 3;
-    const controlOneY = isGroundSwordSlash ? 510 + spread * 0.2 : (isMale ? 610 : 760) + spread * 0.18;
-    const controlTwoX = isGroundSwordSlash ? -160 + spread * 2.1 : (isMale ? 1080 : 1070) + spread * 3;
-    const controlTwoY = isGroundSwordSlash ? 1040 + spread * 0.2 : (isMale ? 1180 : 1200) + spread * 0.24;
-    const endX = isGroundSwordSlash ? 80 + spread * 1.6 : (isMale ? 820 : 900) + spread * 2;
-    const endY = isGroundSwordSlash ? 1390 + spread * 0.12 : (isMale ? 1410 : 1380) + spread * 0.12;
+    // Match the on-screen arc length to the grounded foot slash. Air slashes
+    // use a shorter SVG box, so their viewBox paths need a larger scale.
+    const curveScale = isGroundSwordSlash ? 1.25 : isMale ? 1.91 : 2.13;
+    const controlOneX = startX + ((isGroundSwordSlash ? -185 : isMale ? 1120 : 1110) - startX) * curveScale;
+    const controlOneY = startY + ((isGroundSwordSlash ? 510 : isMale ? 610 : 760) - startY) * curveScale;
+    const controlTwoX = startX + ((isGroundSwordSlash ? -160 : isMale ? 1080 : 1070) - startX) * curveScale;
+    const controlTwoY = startY + ((isGroundSwordSlash ? 1040 : isMale ? 1180 : 1200) - startY) * curveScale;
+    const endX = startX + ((isGroundSwordSlash ? 80 : isMale ? 820 : 900) - startX) * curveScale;
+    const endY = startY + ((isGroundSwordSlash ? 1390 : isMale ? 1410 : 1380) - startY) * curveScale;
+    const point = (x, y) => ({ x, y });
+    const mix = (from, to, amount) => point(from.x + (to.x - from.x) * amount, from.y + (to.y - from.y) * amount);
+    const splitCubic = (curve, amount) => {
+      const first = mix(curve[0], curve[1], amount);
+      const middle = mix(curve[1], curve[2], amount);
+      const last = mix(curve[2], curve[3], amount);
+      const firstMiddle = mix(first, middle, amount);
+      const lastMiddle = mix(middle, last, amount);
+      const split = mix(firstMiddle, lastMiddle, amount);
+      return {
+        before: [curve[0], first, firstMiddle, split],
+        after: [split, lastMiddle, last, curve[3]]
+      };
+    };
+    const baseCurve = slashUpstroke
+      ? [point(endX, endY), point(controlTwoX, controlTwoY), point(controlOneX, controlOneY), point(startX, startY)]
+      : [point(startX, startY), point(controlOneX, controlOneY), point(controlTwoX, controlTwoY), point(endX, endY)];
+    const commonSplit = splitCubic(baseCurve, 0.32);
+    const commonTangentX = commonSplit.after[1].x - commonSplit.after[0].x;
+    const commonTangentY = commonSplit.after[1].y - commonSplit.after[0].y;
+    const commonTangentLength = Math.hypot(commonTangentX, commonTangentY) || 1;
+    const bundleNormalX = -commonTangentY / commonTangentLength;
+    const bundleNormalY = commonTangentX / commonTangentLength;
+    const bundleOffset = (bundleIndex - 2) * 80;
+    const bundleCurve = [
+      commonSplit.after[0],
+      point(commonSplit.after[1].x + bundleNormalX * bundleOffset * 0.3, commonSplit.after[1].y + bundleNormalY * bundleOffset * 0.3),
+      point(commonSplit.after[2].x + bundleNormalX * bundleOffset * 0.72, commonSplit.after[2].y + bundleNormalY * bundleOffset * 0.72),
+      point(commonSplit.after[3].x + bundleNormalX * bundleOffset, commonSplit.after[3].y + bundleNormalY * bundleOffset)
+    ];
+    const strandSplit = splitCubic(bundleCurve, 0.58);
+    const strandTangentX = strandSplit.after[1].x - strandSplit.after[0].x;
+    const strandTangentY = strandSplit.after[1].y - strandSplit.after[0].y;
+    const strandTangentLength = Math.hypot(strandTangentX, strandTangentY) || 1;
+    const strandNormalX = -strandTangentY / strandTangentLength;
+    const strandNormalY = strandTangentX / strandTangentLength;
+    const strandOffset = (strandIndex - 2) * 10;
+    const branchControlOne = point(strandSplit.after[1].x + strandNormalX * strandOffset * 0.2, strandSplit.after[1].y + strandNormalY * strandOffset * 0.2);
+    const branchControlTwo = point(strandSplit.after[2].x + strandNormalX * strandOffset * 0.68, strandSplit.after[2].y + strandNormalY * strandOffset * 0.68);
+    const branchEnd = point(strandSplit.after[3].x + strandNormalX * strandOffset, strandSplit.after[3].y + strandNormalY * strandOffset);
+    const d = slashUpstroke
+      ? `M ${commonSplit.before[0].x} ${commonSplit.before[0].y} C ${commonSplit.before[1].x} ${commonSplit.before[1].y} ${commonSplit.before[2].x} ${commonSplit.before[2].y} ${commonSplit.before[3].x} ${commonSplit.before[3].y} C ${strandSplit.before[1].x} ${strandSplit.before[1].y} ${strandSplit.before[2].x} ${strandSplit.before[2].y} ${strandSplit.before[3].x} ${strandSplit.before[3].y} C ${branchControlOne.x} ${branchControlOne.y} ${branchControlTwo.x} ${branchControlTwo.y} ${branchEnd.x} ${branchEnd.y}`
+      : `M ${branchEnd.x} ${branchEnd.y} C ${branchControlTwo.x} ${branchControlTwo.y} ${branchControlOne.x} ${branchControlOne.y} ${strandSplit.before[3].x} ${strandSplit.before[3].y} C ${strandSplit.before[2].x} ${strandSplit.before[2].y} ${strandSplit.before[1].x} ${strandSplit.before[1].y} ${commonSplit.before[3].x} ${commonSplit.before[3].y} C ${commonSplit.before[2].x} ${commonSplit.before[2].y} ${commonSplit.before[1].x} ${commonSplit.before[1].y} ${commonSplit.before[0].x} ${commonSplit.before[0].y}`;
     return {
-      d: `M ${startX} ${startY} C ${controlOneX} ${controlOneY} ${controlTwoX} ${controlTwoY} ${endX} ${endY}`,
-      width: 3.4 + (1 - Math.abs(index - 9.5) / 10) * 5.4,
-      delay: (index % 4) * 0.006
+      // Every trail shares the opening stroke, then separates into bundles and strands.
+      d,
+      width: 1.7 + (1 - Math.abs(bundleIndex - 2) / 3) * 1.2,
+      delay: 0
     };
   });
+
+  useEffect(() => {
+    if (!battleSlashAnchor || (!isGroundSwordSlash && !isAirSwordSlash)) return;
+    const jumping = isAirSwordSlash;
+    const upstrokeOffset = slashUpstroke ? slashUpstrokeOffset : slashDownstrokeOffset;
+    const trail = {
+      id: ++slashTrailIdRef.current,
+      left: battleSlashAnchor.left,
+      top: battleSlashAnchor.top,
+      jumping,
+      femaleGround: !isMale && !jumping,
+      ground: isGroundSwordSlash,
+      frame: slashFrame,
+      flipped: battleSlashAnchor.flipped ?? slashFlipped,
+      upstroke: slashUpstroke,
+      baseline: activeSlashBaseline,
+      transform: `translate(${upstrokeOffset.x + slashTowardPlayerOffsetX} ${upstrokeOffset.y})`,
+      paths: swordSlashPaths
+    };
+    setSlashTrailInstances((current) => [...current, trail]);
+    const cleanupTimer = scheduleWhileUnpaused(() => {
+      transitionTimers.current = transitionTimers.current.filter((timer) => timer !== cleanupTimer);
+      setSlashTrailInstances((current) => current.filter((item) => item.id !== trail.id));
+    }, 170);
+    transitionTimers.current.push(cleanupTimer);
+  }, [
+    battleAttackFrame,
+    battleJumpAttackFrame,
+    battleSlashAnchor?.jumping,
+    battleGroundSlashUpstroke,
+    battleJumpSlashUpstroke,
+    isMale
+  ]);
 
   return (
     <section className={`game-world ${isStrike ? "is-strike" : ""} ${battleActive ? "is-battle-active" : ""} ${isTyphoonTransition ? "is-typhoon-transition" : ""}`} style={{ "--storm-darkness": skyDarkness, "--night-opacity": nightIntensity, "--celestial-opacity": 1 - celestialFade }} aria-label="\u8349\u539F\u306E\u30B2\u30FC\u30E0\u30D5\u30A3\u30FC\u30EB\u30C9">
@@ -1930,33 +2087,36 @@ export default function GameWorldScene() {
             aria-hidden="true"
             style={battlePlayerSpriteStyle}
           />
-          {bossHitEffect?.sparks?.length > 0 && (isAirSwordSlash || isGroundSwordSlash) && <span
-            key={`slash-sparks-${bossHitEffect.id}`}
-            className="boss-hit-sparks slash-hit-sparks"
-            style={{ left: slashSparkLeft, top: slashSparkTop }}
-            aria-hidden="true"
-          >{bossHitEffect.sparks.map((spark, index) => <i key={index} style={{ "--spark-angle": `${spark.angle}deg`, "--spark-distance": `${spark.distance}px`, "--spark-mid-distance": `${spark.distance * 0.58}px`, "--spark-length": `${spark.length}px`, "--spark-width": `${spark.width}px`, "--spark-spin": `${spark.spin}deg`, "--spark-delay": `${spark.delay}s`, "--spark-duration": `${spark.duration}s` }} />)}</span>}
-          {(isAirSwordSlash || isGroundSwordSlash) && <svg
-            key={`battle-sword-slash-${isGroundSwordSlash ? "ground" : "air"}-${slashFrame}-${slashFlipped}-${slashUpstroke}`}
-            className={`battle-sword-slash ${isGroundSwordSlash ? `is-ground-slash ${!isMale ? "is-female-ground-slash" : ""}` : ""} is-frame-${slashFrame} ${slashFlipped ? "is-flipped" : ""} ${slashUpstroke ? "is-upstroke" : ""}`}
-            style={{
-              "--slash-baseline-offset": isGroundSwordSlash
-                ? `calc(${{ 1: "1.5%", 2: "3.4%", 3: "-0.9%" }[battleAttackFrame]} + 20px)`
-                : `${isMale ? (battleJumpAttackFrame === 2 ? 28 : 20) : (battleJumpAttackFrame === 2 ? 12 : 4)}px`,
-              "--slash-flip-origin-y": slashFlipOriginY
-            }}
-            viewBox="0 0 1000 1500"
-            aria-hidden="true"
-          >
-            <g transform={`translate(${slashTipOffsetX} ${slashTipOffsetY})`}>{swordSlashPaths.map((path, index) => <path
-              key={index}
-              className="sword-slash-trail"
-              pathLength="1"
-              d={path.d}
-              style={{ "--slash-width": `${path.width}px`, "--slash-delay": `${path.delay}s` }}
-            />)}</g>
-          </svg>}
         </div>
+        {slashTrailInstances.map((trail) => <div
+          key={`battle-slash-trail-${trail.id}`}
+          className={`battle-slash-anchor ${trail.jumping ? "is-jumping" : ""} ${trail.femaleGround ? "is-female-ground-slash" : ""}`}
+          style={{ left: `${trail.left}%`, top: trail.jumping ? `${trail.top}px` : undefined }}
+          aria-hidden="true"
+        >
+          <svg
+            className={`battle-sword-slash ${trail.ground ? `is-ground-slash ${trail.femaleGround ? "is-female-ground-slash" : ""}` : ""} is-frame-${trail.frame} ${trail.flipped ? "is-flipped" : ""} ${trail.upstroke ? "is-upstroke" : ""}`}
+            style={{ "--slash-baseline-offset": trail.baseline }}
+            viewBox="0 0 1000 1500"
+          >
+            <defs>
+              <linearGradient id={`slash-gradient-${trail.id}`} x1="0%" x2="0%" y1={trail.upstroke ? "100%" : "0%"} y2={trail.upstroke ? "0%" : "100%"}>
+                <stop offset="0%" stopColor="#22d3ee" />
+                <stop offset="18%" stopColor="#67e8f9" />
+                <stop offset="38%" stopColor="#c8f7ff" />
+                <stop offset="72%" stopColor="#f3fdff" />
+                <stop offset="100%" stopColor="#ffffff" />
+              </linearGradient>
+            </defs>
+            <g transform={trail.transform}>{Array.from({ length: 5 }, (_, bundleIndex) => <g key={bundleIndex}>{trail.paths.slice(bundleIndex * 5, bundleIndex * 5 + 5).map((path, strandIndex) => <path
+                key={strandIndex}
+                className="sword-slash-trail"
+                pathLength="1"
+                d={path.d}
+                style={{ "--slash-width": `${path.width}px`, "--slash-delay": "0s", "--slash-stroke": `url(#slash-gradient-${trail.id})` }}
+              />)}</g>)}</g>
+          </svg>
+        </div>)}
         <div
           key={typhoonAppearance.src}
           className="typhoon-strike-arrival"
@@ -1986,6 +2146,12 @@ export default function GameWorldScene() {
               <img src={typhoonAppearance.src} alt={typhoonAppearance.name} className={`typhoon-strike-character ${bossFlipped ? "is-flipped" : ""}`} />
               <img src={typhoonAppearance.src} alt="" aria-hidden="true" className={`edge-shade-overlay typhoon-strike-character ${bossFlipped ? "is-flipped" : ""}`} />
               </div>
+              {sparkBursts.map((burst) => <span
+                key={`boss-sparks-${burst.id}`}
+                className="boss-hit-sparks"
+                style={{ left: `${burst.x}%`, top: `${burst.y}%` }}
+                aria-hidden="true"
+              >{burst.sparks.map((spark, index) => <i key={index} style={{ "--spark-angle": `${spark.angle}deg`, "--spark-distance": `${spark.distance}px`, "--spark-mid-distance": `${spark.distance * 0.58}px`, "--spark-length": `${spark.length}px`, "--spark-width": `${spark.width}px`, "--spark-spin": `${spark.spin}deg`, "--spark-delay": `${spark.delay}s`, "--spark-duration": `${spark.duration}s` }} />)}</span>)}
               {battleCommandsReady && focusModifierHeld && !bossDefeating && <span
                 className={`boss-focus-marker ${focusTarget.id === "eyes" ? "is-eye" : ""}`}
                 style={{ left: `${focusTarget.x}%`, top: `${focusTarget.y}%` }}
